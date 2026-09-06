@@ -21,7 +21,7 @@ import os
 from flask import Blueprint, jsonify, request
 
 from auth import require_auth
-from services import analytics_gateway, trust_ledger
+from services import analytics_gateway, portfolio_agent, trust_ledger
 
 bp = Blueprint("analytics", __name__, url_prefix="/api/analytics")
 
@@ -151,3 +151,27 @@ def trends():
 @require_auth
 def ageing():
     return jsonify(analytics_gateway.ageing(_window()))
+
+
+@bp.post("/ask")
+@require_auth
+def ask():
+    """A portfolio question, answered by an agent that reads the data itself.
+
+    Every other AI surface in this product is handed its numbers. This one is
+    given TOOLS — the five analytics in mcp/tools.yaml, served over MCP
+    Toolbox for Databases against the same BigQuery table the analytics screen
+    reads. See services/portfolio_agent.py.
+
+    Answers 200 with `available: false` rather than 5xx when the Toolbox is
+    down or unconfigured, because "the tools are unavailable" is a real answer
+    the UI should render as itself. What it never returns is an answer
+    composed without data.
+    """
+    payload = request.get_json(silent=True) or {}
+    question = (payload.get("question") or "").strip()
+    if not question:
+        return jsonify({"error": "question is required"}), 400
+    if len(question) > 500:
+        return jsonify({"error": "question is too long"}), 400
+    return jsonify(portfolio_agent.ask(question))

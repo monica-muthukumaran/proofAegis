@@ -96,6 +96,12 @@ class Config:
     # region boundary to read its own data.
     BIGQUERY_LOCATION = os.environ.get("BIGQUERY_LOCATION", "asia-south1")
 
+    # --- MCP Toolbox for Databases ---
+    # The server that serves backend/mcp/tools.yaml. Empty means the portfolio
+    # agent reports "not configured" rather than being run without its tools —
+    # see services/portfolio_agent.py for why it is never run degraded.
+    MCP_TOOLBOX_URL = os.environ.get("MCP_TOOLBOX_URL", "")
+
     # --- OCR for scanned documents ---
     # Needs the Tesseract binary on PATH (and TESSDATA_PREFIX pointing at its
     # language data). Off by default: a server without Tesseract should say so

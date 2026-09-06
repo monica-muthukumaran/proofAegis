@@ -19,6 +19,9 @@ google-cloud-bigquery==3.27.0
 
 # Google ADK — document extraction + resolution drafting agents
 google-adk==2.5.0
+# MCP Toolbox client — how the portfolio agent loads its toolset
+# (backend/mcp/tools.yaml). Only imported when MCP_TOOLBOX_URL is set.
+toolbox-core==0.5.0
 google-genai>=2.9,<3
 
 # PDF text extraction

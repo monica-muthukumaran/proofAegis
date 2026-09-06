@@ -1,0 +1,253 @@
+# tools.yaml — MCP Toolbox for Databases.
+#
+# WHAT THIS IS FOR
+#
+# services/bigquery_executor.py answers five fixed questions for the analytics
+# screen. This file exposes those same five aggregations as MCP tools, so an
+# agent can answer a controller's question — "which vendors should I audit
+# this quarter?" — by CALLING one and reading real rows, instead of being
+# handed a dict and asked to narrate it.
+#
+# THE RULE THIS FILE OBEYS, AND WHY IT IS SHAPED THIS WAY
+#
+# Every tool below is a PARAMETERISED, PRE-WRITTEN statement. There is no
+# tool that accepts SQL. The agent chooses which question to ask and with
+# what window; it cannot compose a new one.
+#
+# That is the same boundary the rest of the product holds — a number a human
+# acts on never comes from a model — enforced one layer lower. An agent with
+# a `run_sql(query)` tool can compute a figure, and a figure a model composed
+# is a figure a model can get wrong. An agent with `vendor_risk(days)` can
+# only report what the same SQL the analytics screen runs returned.
+#
+# The statements here are the executor's queries with the array projections
+# flattened, because an MCP tool result is rows rather than a response body.
+# tests/test_mcp_manifest.py asserts this file stays in step with
+# services/analytics_gateway.py:ANALYTIC_NAMES, so a sixth analytic cannot be
+# added to the product and silently not exist here.
+#
+# RUNNING IT
+#
+#   toolbox --tools-file backend/mcp/tools.yaml --port 5000
+#
+# See DEPLOYMENT_GUIDE.md §MCP Toolbox.
+
+sources:
+  proofaegis-bigquery:
+    kind: bigquery
+    # Substituted from the environment at load time; nothing here is a secret
+    # and no key is stored in this file.
+    project: ${GOOGLE_CLOUD_PROJECT}
+    location: ${BIGQUERY_LOCATION:asia-south1}
+
+tools:
+  portfolio_summary:
+    kind: bigquery-sql
+    source: proofaegis-bigquery
+    description: >
+      Portfolio headline for a bounded window: how many invoices were
+      analysed, how many raised an exception, how many are still open, the
+      total invoiced value and the value currently at risk. Use this to
+      answer "how are we doing overall" before drilling into a vendor.
+      The exception RATE is meaningful because clean invoices are counted
+      too — they are the denominator.
+    parameters:
+      - name: days
+        type: integer
+        description: Size of the window in days, counted back from today. Use 365 unless the question names a period.
+    statement: |
+      WITH scoped AS (
+        SELECT * FROM `${GOOGLE_CLOUD_PROJECT}.${BIGQUERY_DATASET:proofaegis_analytics}.${BIGQUERY_TABLE:cases}`
+        WHERE created_at IS NULL
+           OR created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @days DAY)
+      )
+      SELECT
+        COUNT(*)                                                     AS invoice_count,
+        COUNTIF(exception_type IS NOT NULL AND exception_type != 'no_exception') AS exception_count,
+        COUNTIF(exception_type IS NULL OR exception_type = 'no_exception')       AS clean_count,
+        ROUND(SAFE_DIVIDE(
+          COUNTIF(exception_type IS NOT NULL AND exception_type != 'no_exception'),
+          COUNT(*)), 4)                                              AS exception_rate,
+        ROUND(SUM(COALESCE(invoice_amount, 0)), 2)                   AS invoiced_value,
+        ROUND(SUM(IF(exception_type IS NOT NULL
+                     AND exception_type != 'no_exception'
+                     AND status IN ('exception_detected', 'assigned',
+                                    'awaiting_procurement', 'awaiting_receiving',
+                                    'awaiting_vendor'),
+                     COALESCE(financial_impact, 0), 0)), 2)          AS value_at_risk
+      FROM scoped
+
+  vendor_risk:
+    kind: bigquery-sql
+    source: proofaegis-bigquery
+    description: >
+      Per-vendor exception rate, money currently at risk, most common failure
+      mode, and how long their open cases have been sitting. Ranked by money
+      first, then by how often they fail — two large exceptions matter more
+      than ten trivial ones. This is the tool to call when asked which
+      vendors to audit, review, or escalate.
+    parameters:
+      - name: days
+        type: integer
+        description: Size of the window in days, counted back from today.
+      - name: limit
+        type: integer
+        description: How many vendors to return, highest risk first. Keep at or below 25.
+    statement: |
+      WITH scoped AS (
+        SELECT * FROM `${GOOGLE_CLOUD_PROJECT}.${BIGQUERY_DATASET:proofaegis_analytics}.${BIGQUERY_TABLE:cases}`
+        WHERE created_at IS NULL
+           OR created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @days DAY)
+      ),
+      is_open AS (
+        SELECT *,
+          (exception_type IS NOT NULL AND exception_type != 'no_exception') AS is_exception,
+          status IN ('exception_detected', 'assigned', 'awaiting_procurement',
+                     'awaiting_receiving', 'awaiting_vendor')               AS open_status
+        FROM scoped
+      ),
+      per_vendor AS (
+        SELECT
+          COALESCE(vendor_id, vendor_name, 'unknown')      AS vendor_id,
+          ANY_VALUE(COALESCE(vendor_name, 'Unknown vendor')) AS vendor_name,
+          COUNT(*)                                          AS invoice_count,
+          COUNTIF(is_exception)                             AS exception_count,
+          ROUND(SAFE_DIVIDE(COUNTIF(is_exception), COUNT(*)), 4) AS exception_rate,
+          ROUND(SUM(IF(is_exception AND open_status,
+                       COALESCE(financial_impact, 0), 0)), 2)    AS value_at_risk,
+          ROUND(AVG(IF(is_exception AND open_status AND created_at IS NOT NULL,
+                       TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), created_at, SECOND) / 86400.0,
+                       NULL)), 1)                                AS average_open_age_days
+        FROM is_open
+        GROUP BY 1
+      ),
+      top_type AS (
+        SELECT vendor_id, exception_type AS top_exception_type
+        FROM (
+          SELECT COALESCE(vendor_id, vendor_name, 'unknown') AS vendor_id,
+                 exception_type,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY COALESCE(vendor_id, vendor_name, 'unknown')
+                   ORDER BY COUNT(*) DESC, exception_type) AS rn
+          FROM is_open WHERE is_exception
+          GROUP BY 1, 2
+        ) WHERE rn = 1
+      )
+      SELECT v.*, t.top_exception_type
+      FROM per_vendor v LEFT JOIN top_type t USING (vendor_id)
+      ORDER BY v.value_at_risk DESC, v.exception_rate DESC
+      LIMIT @limit
+
+  monthly_trend:
+    kind: bigquery-sql
+    source: proofaegis-bigquery
+    description: >
+      Invoices, exceptions, clean invoices and value at risk per calendar
+      month. Use this for questions about whether things are getting better
+      or worse, not for the current state.
+    parameters:
+      - name: months
+        type: integer
+        description: How many months back to report. Use 12 unless the question names a period.
+    statement: |
+      SELECT
+        FORMAT_TIMESTAMP('%Y-%m', created_at) AS month,
+        COUNT(*)                              AS invoices,
+        COUNTIF(exception_type IS NOT NULL AND exception_type != 'no_exception') AS exceptions,
+        COUNTIF(exception_type IS NULL OR exception_type = 'no_exception')       AS clean,
+        ROUND(SUM(IF(exception_type IS NOT NULL AND exception_type != 'no_exception',
+                     COALESCE(financial_impact, 0), 0)), 2)                      AS value_at_risk
+      FROM `${GOOGLE_CLOUD_PROJECT}.${BIGQUERY_DATASET:proofaegis_analytics}.${BIGQUERY_TABLE:cases}`
+      WHERE created_at IS NOT NULL
+        AND created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @months * 31 DAY)
+      GROUP BY month
+      ORDER BY month
+
+  ageing:
+    kind: bigquery-sql
+    source: proofaegis-bigquery
+    description: >
+      How long open exceptions have been sitting, bucketed, with the value in
+      each bucket and how many have passed the 14-day SLA. Only open cases
+      count — a resolved case has no age worth worrying about. Use this for
+      questions about backlog, delay, or what is overdue.
+    parameters:
+      - name: days
+        type: integer
+        description: Size of the window in days, counted back from today.
+    statement: |
+      WITH open_cases AS (
+        SELECT
+          COALESCE(financial_impact, 0) AS financial_impact,
+          TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), created_at, SECOND) / 86400.0 AS age_days
+        FROM `${GOOGLE_CLOUD_PROJECT}.${BIGQUERY_DATASET:proofaegis_analytics}.${BIGQUERY_TABLE:cases}`
+        WHERE created_at IS NOT NULL
+          AND created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @days DAY)
+          AND exception_type IS NOT NULL AND exception_type != 'no_exception'
+          AND status IN ('exception_detected', 'assigned', 'awaiting_procurement',
+                         'awaiting_receiving', 'awaiting_vendor')
+      )
+      SELECT
+        CASE
+          WHEN age_days <= 3  THEN '0-3 days'
+          WHEN age_days <= 7  THEN '4-7 days'
+          WHEN age_days <= 14 THEN '8-14 days'
+          WHEN age_days <= 30 THEN '15-30 days'
+          ELSE '31+ days'
+        END                                            AS bucket,
+        COUNT(*)                                       AS case_count,
+        ROUND(SUM(financial_impact), 2)                AS value_at_risk,
+        COUNTIF(age_days > 14)                         AS breaching_sla
+      FROM open_cases
+      GROUP BY bucket
+      ORDER BY MIN(age_days)
+
+  cross_case_value:
+    kind: bigquery-sql
+    source: proofaegis-bigquery
+    description: >
+      The product's central claim, measured. Splits exceptions into those a
+      single case's own documents could reveal and those that required
+      reading the rest of the workspace — duplicates, cumulative over-billing,
+      changed bank details, price drift. Reports how many of the cross-case
+      findings scored a FULL three-way match on their own documents, which
+      means a per-invoice system would have passed them for payment. Use this
+      when asked what this system catches that others do not.
+    parameters:
+      - name: days
+        type: integer
+        description: Size of the window in days, counted back from today.
+    statement: |
+      WITH scoped AS (
+        SELECT * FROM `${GOOGLE_CLOUD_PROJECT}.${BIGQUERY_DATASET:proofaegis_analytics}.${BIGQUERY_TABLE:cases}`
+        WHERE created_at IS NULL
+           OR created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @days DAY)
+      ),
+      exceptions AS (
+        SELECT *,
+          exception_type IN ('duplicate_invoice', 'po_over_billed',
+                             'payment_details_changed', 'vendor_price_drift',
+                             'recurring_suspected') AS is_cross
+        FROM scoped
+        WHERE exception_type IS NOT NULL AND exception_type != 'no_exception'
+      )
+      SELECT
+        COUNTIF(NOT is_cross)                                    AS single_invoice_count,
+        ROUND(SUM(IF(NOT is_cross, COALESCE(financial_impact, 0), 0)), 2) AS single_invoice_value,
+        COUNTIF(is_cross)                                        AS cross_case_count,
+        ROUND(SUM(IF(is_cross, COALESCE(financial_impact, 0), 0)), 2)     AS cross_case_value,
+        COUNTIF(is_cross AND match_score >= 100)                 AS would_have_cleared_count,
+        ROUND(SUM(IF(is_cross AND match_score >= 100,
+                     COALESCE(financial_impact, 0), 0)), 2)      AS would_have_cleared_value
+      FROM exceptions
+
+toolsets:
+  # The set handed to the portfolio agent. Named, so the agent asks for a
+  # toolset rather than "every tool on the server" — a server that later
+  # gains a write tool must not silently hand it to a read-only agent.
+  proofaegis-analytics:
+    - portfolio_summary
+    - vendor_risk
+    - monthly_trend
+    - ageing
+    - cross_case_value
