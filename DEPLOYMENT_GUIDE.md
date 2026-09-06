@@ -696,6 +696,132 @@ Remove-Item key.json
 
 ---
 
+## 13A. BigQuery and MCP Toolbox
+
+Both are optional. The app runs fully without them — `ANALYTICS_ENGINE`
+defaults to `firestore` and the portfolio agent reports "not configured"
+rather than answering. Set them up when you want the analytics served by
+BigQuery and the agent able to query it.
+
+### 13A.1 Why this exists
+
+Not because the analytics screen is slow. Every cross-case check — duplicate,
+cumulative over-billing, changed bank details, price drift, cadence — answers
+a question about ONE invoice by reading the vendor's WHOLE history, and
+Firestore serves that with an unfiltered collection stream. At 320 cases that
+is free; at real volume it is a full-collection scan per invoice, of exactly
+the feature that makes this product different. See the module docstring in
+`backend/services/bigquery_executor.py`.
+
+### 13A.2 Enable the API and create the table
+
+```bash
+gcloud services enable bigquery.googleapis.com --project=$PROJECT_ID
+```
+
+```bash
+cd backend && python -m scripts.load_bigquery --create
+```
+
+This creates the dataset in `BIGQUERY_LOCATION` (default `asia-south1`, same
+region as everything else) and a table partitioned on `DATE(created_at)` and
+clustered on `vendor_id, exception_type`. Both matter: the partition prunes
+the date window every query carries, and the cluster serves the per-vendor
+history read.
+
+### 13A.3 Load the cases
+
+```bash
+cd backend && python -m scripts.load_bigquery --from-firestore
+```
+
+Or from a generated portfolio file:
+
+```bash
+cd backend && python -m scripts.load_bigquery --from-file data/generated/portfolio.json
+```
+
+Both **truncate before loading**. A portfolio file is a whole population, and
+appending it twice would double every count on every analytics screen.
+
+Check it:
+
+```bash
+cd backend && python -m scripts.load_bigquery --verify
+```
+
+### 13A.4 Grant the service account access
+
+```bash
+gcloud projects add-iam-policy-binding $PROJECT_ID   --member="serviceAccount:$SA" --role="roles/bigquery.dataViewer"
+```
+
+```bash
+gcloud projects add-iam-policy-binding $PROJECT_ID   --member="serviceAccount:$SA" --role="roles/bigquery.jobUser"
+```
+
+`dataViewer` reads the table; `jobUser` runs the query. Read-only on purpose —
+nothing in the serving path writes to BigQuery, only `load_bigquery.py` does,
+and you run that yourself.
+
+### 13A.5 Switch the engine on
+
+```bash
+gcloud run services update proofaegis-api --region=asia-south1   --update-env-vars "ANALYTICS_ENGINE=bigquery"
+```
+
+`GET /api/settings` now reports `analytics_engine: bigquery` and the table it
+is reading. If it still says `firestore`, the variable did not reach the
+revision — check `gcloud run services describe`.
+
+> **Rolling back is one command.** Set `ANALYTICS_ENGINE=firestore` and the
+> Python path serves the same numbers. `tests/test_bigquery_parity.py` is what
+> makes that claim safe rather than hopeful.
+
+### 13A.6 MCP Toolbox
+
+`backend/mcp/tools.yaml` exposes the five analytics as parameterised BigQuery
+tools. There is deliberately no tool that accepts SQL: the agent picks a
+question and a window and cannot compose an aggregation.
+
+Install the Toolbox server and run it against the manifest:
+
+```bash
+toolbox --tools-file backend/mcp/tools.yaml --port 5000
+```
+
+It substitutes `${GOOGLE_CLOUD_PROJECT}`, `${BIGQUERY_DATASET}` and
+`${BIGQUERY_TABLE}` from the environment, so export those first. Nothing in
+that file is a secret and no key is stored in it.
+
+Point the backend at it:
+
+```bash
+gcloud run services update proofaegis-api --region=asia-south1   --update-env-vars "MCP_TOOLBOX_URL=https://your-toolbox-host"
+```
+
+Then `POST /api/analytics/ask` with `{"question": "Which vendors should I
+audit this quarter?"}`. The response carries `tools_called` — an answer with
+an empty list is prose, not data, and the UI labels it as such.
+
+If the Toolbox is unreachable the agent is **not** run against a substitute.
+It returns `available: false` with no answer field. An agent that answers a
+portfolio question from memory with its tools down produces confident text
+with nothing behind it, which is the failure this product argues against.
+
+### 13A.7 Cost
+
+The table is a few hundred rows and every query is partition-pruned to a
+bounded window, so this sits inside the BigQuery free tier (1 TB of query
+processing per month).
+
+`--verify` measures that rather than claiming it: it dry-runs the whole table
+and a 30-day window and prints the bytes each would process. If the two
+numbers are equal the partition is not pruning, and it says so. A dry run is
+billed at nothing, so this is safe to run before switching production over.
+
+---
+
 ## 14. Deploy the frontend
 
 ```bash

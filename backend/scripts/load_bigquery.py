@@ -102,6 +102,21 @@ def from_firestore(client) -> None:
     _load(client, get_datastore().list_exceptions(), "Firestore")
 
 
+def _bytes_scanned(client, sql: str) -> int:
+    """What this query would cost, without running it.
+
+    A dry run is billed at nothing and returns the bytes BigQuery would
+    process. Reported so the partition pruning can be CHECKED rather than
+    asserted — an unpartitioned table scanning all history for a 30-day
+    question looks identical in the UI and different here.
+    """
+    from google.cloud import bigquery
+
+    job = client.query(sql, job_config=bigquery.QueryJobConfig(
+        dry_run=True, use_query_cache=False))
+    return job.total_bytes_processed or 0
+
+
 def verify(client) -> None:
     """Read back what the executor would read, so a load can be checked
     without opening the UI."""
@@ -119,6 +134,21 @@ def verify(client) -> None:
     print(f"value at risk:    INR {summary['value_at_risk']:,.0f}")
     print()
     print(bq.cross_case_value(days=365)["headline"])
+
+    # Cost, measured rather than claimed. The 30-day figure should be a
+    # fraction of the 365-day one; if the two are equal, the partition is not
+    # pruning and every query is scanning all history.
+    print()
+    full = f"SELECT * FROM `{bq.table_ref()}`"
+    windowed = (f"SELECT * FROM `{bq.table_ref()}` WHERE created_at >= "
+                f"TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)")
+    whole = _bytes_scanned(client, full)
+    pruned = _bytes_scanned(client, windowed)
+    print(f"bytes scanned, whole table: {whole:,}")
+    print(f"bytes scanned, 30-day window: {pruned:,}")
+    if whole and pruned >= whole:
+        print("  WARNING: the 30-day window scans the whole table — "
+              "the partition is not pruning.")
 
 
 def main() -> None:
