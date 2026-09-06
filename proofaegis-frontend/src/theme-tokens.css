@@ -1,0 +1,366 @@
+/* ==========================================================================
+   Theme tokens — the reference look
+   ==========================================================================
+   Loaded after styles.css so it replaces that file's :root block wholesale.
+   Kept separate rather than edited in place because styles.css is written as
+   one long minified-ish line per section, and a palette is the thing most
+   likely to be revised again.
+
+   WHAT CHANGED, AND WHY IT IS A STRUCTURAL CHANGE RATHER THAN A RECOLOUR
+
+   The previous palette had one accent — teal — doing two unrelated jobs: it
+   painted primary buttons AND it signalled "look here". The reference
+   separates those, and the separation is the actual point of the theme:
+
+     PRIMARY ACTION is dark ink. "Approve with exception" is near-black. A
+     button is the most prominent thing on a screen by position and weight
+     already; colouring it as well spends a signal on something that does not
+     need one.
+
+     RUST IS RESERVED FOR RISK. High risk, a breached variance, the marker
+     outside its tolerance band, the bar for a month that got worse, the
+     border on a finding node. Nothing decorative is ever this colour, which
+     is what lets a reviewer scan a page for red and be right every time.
+
+   That reservation is why the accent below is a slate rather than the red
+   from the screenshots. Painting buttons red would put the loudest colour on
+   the screen on every panel, and the exceptions would stop standing out.
+
+   Surfaces are near-white and warm, borders are hairlines, and shadows are
+   almost gone — depth in the reference comes from the border and the
+   generous whitespace, not from a drop shadow.
+   ========================================================================== */
+:root{
+  /* --- Surfaces ------------------------------------------------------- */
+  --bg:#f7f7f6;
+  --surface:#ffffff;
+  --surface-soft:#fbfbfa;
+  --panel-elevated:#f4f4f2;
+  --nav:#ffffff;
+
+  /* --- Ink ------------------------------------------------------------ */
+  --ink:#1a1f24;
+  --muted:#676d72;
+  --text-muted:var(--muted);
+  --text-secondary:var(--muted);
+
+  /* --- Lines ---------------------------------------------------------- */
+  --line:#e7e6e3;
+  --border:var(--line);
+  --border-strong:#d0cfca;
+
+  /* --- Primary action, and the states that follow it ------------------ */
+  /* Deliberately not the signal red. See the note above. */
+  --accent:#1f2a33;
+  --accent-strong:#121a21;
+  --accent-soft:#eef0f1;
+  --accent-2:#41627d;
+
+  /* --- Signal --------------------------------------------------------- */
+  /* The one colour that means "a human needs to look at this".
+     Every value in this block was solved rather than picked: each is the
+     minimum darkening (lightening, in dark mode) that clears 4.5:1 against
+     every surface it is actually used on — the white card, the elevated
+     panel, the page, and its own tinted badge background. Eyeballing put
+     three of them between 4.1 and 4.5, which looks fine and is not. */
+  --exception:#b84837;
+  --exception-soft:#fbeeec;
+  --critical:#a63a2c;
+  --critical-soft:#faeae7;
+  --success:#2d7b4f;
+  --verified:var(--success);
+  --success-soft:#e9f4ed;
+  --warning:#946515;
+  --warning-soft:#fbf2e0;
+
+  /* --- Type ----------------------------------------------------------- */
+  /* One family throughout. The serif display face went with the old theme:
+     the reference sets headings in the same grotesque as everything else and
+     leans on size and weight, which is what makes a dense finance screen read
+     as one document rather than as a magazine. */
+  --font:"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  /* Identifiers — case numbers, invoice and PO references, document
+     filenames, settings paths. These are things a person reads CHARACTER BY
+     CHARACTER and often retypes or greps for, so they get tabular glyphs and
+     unambiguous 0/O and 1/l. A system stack, so the theme costs no extra
+     font download. */
+  --mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,"Liberation Mono",monospace;
+
+  /* --- Shape ---------------------------------------------------------- */
+  --radius-sm:6px;
+  --radius-md:10px;
+  --radius-lg:14px;
+
+  /* --- Depth ---------------------------------------------------------- */
+  /* Nearly flat. The reference separates surfaces with a hairline and space. */
+  --shadow-panel:0 1px 2px rgba(26,31,36,.04);
+  --shadow-elevated:0 16px 44px rgba(26,31,36,.16);
+}
+
+/* --- Dark ---------------------------------------------------------------
+   Selected for the dark surface rather than flipped from the light values.
+   The rust lifts and desaturates slightly so it still reads as a warning
+   rather than as brown, and the primary action inverts to a light surface
+   with dark text — a near-black button on a near-black page would disappear,
+   which is the usual way a dark mode built by inversion goes wrong. */
+/* Written twice, deliberately, and this is the one part of the file where
+   duplication is correct rather than lazy.
+
+   `:root:not([data-theme="light"])` matches whenever no explicit light theme
+   is stamped — which is ALWAYS, unless the user has chosen light. On its own,
+   outside a media query, it therefore paints every visitor dark regardless of
+   what their OS asked for. It only means "system default, and the system is
+   dark" when it sits inside the media query, and the `:not()` is what lets an
+   explicit light choice still win on a dark OS.
+
+   So: the toggle scope is unconditional, the system scope is gated. Plain CSS
+   has no way to share one body between the two. Keep them in step by hand. */
+:root[data-theme="dark"] {
+  --bg:#14161a;
+  --surface:#1c1f24;
+  --surface-soft:#212529;
+  --panel-elevated:#272b30;
+  --nav:#17191d;
+
+  --ink:#eceef0;
+  --muted:#9aa1a8;
+
+  --line:#2f343a;
+  --border-strong:#454b52;
+
+  --accent:#dfe3e6;
+  --accent-strong:#ffffff;
+  --accent-soft:rgba(223,227,230,.12);
+  --accent-2:#7ea6c6;
+
+  --exception:#e67762;
+  --exception-soft:rgba(230,119,98,.15);
+  --critical:#e2604f;
+  --critical-soft:rgba(226,96,79,.16);
+  --success:#4faa74;
+  --success-soft:rgba(79,170,116,.15);
+  --warning:#cf9a3c;
+  --warning-soft:rgba(207,154,60,.15);
+
+  --shadow-panel:0 1px 2px rgba(0,0,0,.34);
+  --shadow-elevated:0 18px 48px rgba(0,0,0,.6);
+}
+
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) {
+  --bg:#14161a;
+  --surface:#1c1f24;
+  --surface-soft:#212529;
+  --panel-elevated:#272b30;
+  --nav:#17191d;
+
+  --ink:#eceef0;
+  --muted:#9aa1a8;
+
+  --line:#2f343a;
+  --border-strong:#454b52;
+
+  --accent:#dfe3e6;
+  --accent-strong:#ffffff;
+  --accent-soft:rgba(223,227,230,.12);
+  --accent-2:#7ea6c6;
+
+  --exception:#e67762;
+  --exception-soft:rgba(230,119,98,.15);
+  --critical:#e2604f;
+  --critical-soft:rgba(226,96,79,.16);
+  --success:#4faa74;
+  --success-soft:rgba(79,170,116,.15);
+  --warning:#cf9a3c;
+  --warning-soft:rgba(207,154,60,.15);
+
+  --shadow-panel:0 1px 2px rgba(0,0,0,.34);
+  --shadow-elevated:0 18px 48px rgba(0,0,0,.6);
+}
+}
+
+/* ==========================================================================
+   Component corrections
+   ==========================================================================
+   Places where styles.css hardcoded a colour before the theme existed, or
+   where the reference's structure differs from a token swap. */
+
+/* --- Type ---------------------------------------------------------------
+   Drop the serif display face. */
+h1,h2{font-family:var(--font);letter-spacing:-.028em}
+.text-page-title{font-weight:700}
+
+/* Identifiers. Applied by class rather than by guessing at elements, so a
+   heading that happens to be a case number opts in and a vendor name never
+   does. */
+.mono,.id{
+  font-family:var(--mono);
+  font-size:.9375em;
+  letter-spacing:-.01em;
+  font-variant-numeric:tabular-nums;
+  /* An identifier is one token. "EXC-2026-0001" broken over three lines at a
+     hyphen is unreadable and unselectable, and the hyphens in these
+     references are the natural place a browser chooses to break. The column
+     scrolls instead. */
+  white-space:nowrap;
+}
+/* Inside a table cell an identifier should not out-weigh the row it labels. */
+td .mono,td .id{font-size:.875em}
+
+/* --- Sidebar ------------------------------------------------------------
+   The reference sidebar is a light rail, not a dark slab. A dark sidebar is a
+   strong horizontal division on every screen, and it competes with the one
+   thing on these pages that is supposed to be loud. */
+.sidebar{
+  background:var(--nav);
+  color:var(--ink);
+  border-right:1px solid var(--line);
+}
+.sidebar-brand .text-muted{color:var(--muted)}
+.sidebar-link{
+  color:var(--muted);
+  font-weight:600;
+  border-left:3px solid transparent;
+}
+.sidebar-link:hover{background:var(--panel-elevated);color:var(--ink)}
+.sidebar-link.active{
+  background:var(--accent-soft);
+  border-left-color:var(--accent);
+  color:var(--ink);
+  font-weight:700;
+}
+
+/* --- Buttons ------------------------------------------------------------ */
+.btn-primary{background:var(--accent);color:var(--surface)}
+.btn-primary:hover{background:var(--accent-strong)}
+:root[data-theme="dark"] .btn-primary{color:#14161a}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .btn-primary{color:#14161a}
+}
+.btn-secondary{background:var(--surface);color:var(--ink);border-color:var(--border-strong)}
+.btn-danger{background:var(--critical-soft);color:var(--critical);border-color:var(--critical)}
+.text-button{color:var(--accent)}
+
+/* Focus. The old ring was an orange that belonged to no palette; the signal
+   colour is the right one here because a focus ring IS "look here". */
+button:focus-visible,a:focus-visible,input:focus-visible,
+select:focus-visible,textarea:focus-visible,[role="button"]:focus-visible{
+  outline:2px solid var(--exception);
+  outline-offset:2px;
+}
+
+/* --- Panels and tables -------------------------------------------------- */
+.panel,.panel-solid,.panel-elevated{border-color:var(--line)}
+.panel-elevated{background:var(--surface-soft)}
+th{
+  background:transparent;
+  color:var(--muted);
+  font-weight:600;
+  letter-spacing:.07em;
+  border-bottom:1px solid var(--line);
+}
+.table-scroll{border-color:var(--line)}
+tr.row-clickable:hover{background:var(--surface-soft)}
+tbody tr.row-clickable:hover{box-shadow:inset 3px 0 0 var(--accent)}
+
+/* --- Tabs --------------------------------------------------------------- */
+.tab-btn{font-weight:600}
+.tab-btn.active{color:var(--ink);border-bottom-color:var(--accent);font-weight:700}
+
+/* --- Badges -------------------------------------------------------------
+   Restated against the new tokens so a badge is never a leftover hex. */
+.badge{font-weight:600}
+.badge-neutral{background:var(--panel-elevated);color:var(--muted);border-color:var(--line)}
+.badge-verified{background:var(--success-soft);color:var(--success);border-color:color-mix(in srgb,var(--success) 32%,transparent)}
+.badge-warning{background:var(--warning-soft);color:var(--warning);border-color:color-mix(in srgb,var(--warning) 32%,transparent)}
+.badge-exception{background:var(--exception-soft);color:var(--exception);border-color:color-mix(in srgb,var(--exception) 34%,transparent)}
+.badge-critical{background:var(--critical-soft);color:var(--critical);border-color:color-mix(in srgb,var(--critical) 36%,transparent)}
+.badge-accent{background:var(--accent-soft);color:var(--ink);border-color:var(--border-strong)}
+
+/* --- Inputs ------------------------------------------------------------- */
+.input{background:var(--surface);border-color:var(--border-strong);color:var(--ink)}
+.input:focus{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.form-feedback-error{background:var(--critical-soft);color:var(--critical);border-color:color-mix(in srgb,var(--critical) 34%,transparent)}
+.form-feedback-success{background:var(--success-soft);color:var(--success);border-color:color-mix(in srgb,var(--success) 34%,transparent)}
+
+/* --- Topbar and KPI rail ------------------------------------------------ */
+.topbar{background:var(--surface);border-bottom:1px solid var(--line)}
+:root[data-theme="dark"] .topbar{background:var(--surface)}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .topbar{background:var(--surface)}
+}
+/* The reference does not paint a coloured rail on every card — the top border
+   was a teal stripe on all four KPIs, which said nothing. Only a card that
+   carries a severity gets one. */
+.kpi-card{border-top:0;border-left:3px solid transparent}
+.kpi-exception{border-left-color:var(--exception)}
+.kpi-warning{border-left-color:var(--warning)}
+.kpi-verified{border-left-color:var(--success)}
+
+/* --- Signal usage, restated -------------------------------------------- */
+.row-breach td{background:color-mix(in srgb,var(--exception) 6%,transparent)}
+.row-breach td:first-child{box-shadow:inset 3px 0 0 var(--exception)}
+tr.risk-high td:first-child{box-shadow:inset 3px 0 0 var(--exception)}
+tr.risk-medium td:first-child{box-shadow:inset 3px 0 0 var(--warning)}
+.tolerance-allowed{
+  background:color-mix(in srgb,var(--success) 12%,transparent);
+  border-color:color-mix(in srgb,var(--success) 45%,transparent);
+}
+.tolerance-marker.inside{background:var(--success)}
+.tolerance-marker.outside{background:var(--exception)}
+.tolerance-track{background:var(--panel-elevated);border-color:var(--line)}
+
+/* --- Charts -------------------------------------------------------------
+   Bars are the signal colour on a light track, matching the reference's
+   vendor-risk rows. */
+.bar-track{background:var(--panel-elevated)}
+.chart-grid{stroke:var(--line)}
+.chart-tick,.chart-axis-label{fill:var(--muted)}
+
+/* --- Command palette and overlays -------------------------------------- */
+.palette-item.active{background:var(--panel-elevated)}
+.palette-footer{background:var(--surface-soft)}
+.kbd{background:var(--panel-elevated);border-color:var(--line);color:var(--muted)}
+.overlay-backdrop{background:rgba(26,31,36,.42)}
+.tour-highlight-box{box-shadow:0 0 0 3px var(--exception),0 0 0 8px color-mix(in srgb,var(--exception) 22%,transparent)}
+.tour-progress-fill{background:var(--accent)}
+.skeleton{background:var(--panel-elevated)}
+
+/* Monospaced identifiers are wider than the proportional text they replaced,
+   so the queue needs more room before the horizontal scroll takes over —
+   without this the ID and Invoice columns get squeezed to nothing and every
+   other cell wraps around them. */
+table{min-width:820px}
+
+/* --- Long text in a dense table ----------------------------------------
+   `.clamp-2` is a `-webkit-box` two-line clamp, and it is applied directly to
+   a <td>. A table cell forces its own display back, so the clamp never
+   engages: the cell simply grew to three lines and cut the third one in half
+   at an arbitrary pixel height.
+
+   In a table the right treatment is one line with an ellipsis anyway — a
+   queue is scanned down a column, and a row that is sometimes two lines tall
+   makes that scan bumpy. The title attribute already carries the full name
+   for anyone who needs it. Outside a table the two-line clamp is untouched. */
+td.clamp-2{
+  display:table-cell;
+  max-width:210px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+/* --- Icons in flex rows -------------------------------------------------
+   An inline SVG is a flex item, and a flex item shrinks. Next to a long
+   sentence the shield in the cross-case panel was being squeezed from its
+   declared 15px to 8px, which turned it into an unrecognisable sliver — the
+   glyph was fine, the layout was crushing it. Icons are fixed-size by
+   definition, so they opt out of shrinking everywhere at once. */
+.row > svg,.badge > svg,.btn > svg,.trust-verdict > svg{flex:none}
+
+/* The authoritative cell in a trust row carries the value that was actually
+   used. Its label was muted like the others and sat on a tinted background,
+   which measured 3.48:1 in dark mode — and it is the one label on that row a
+   reader should not have to squint at. Full ink, which fixes the contrast and
+   is the better emphasis anyway. */
+.trust-cell-authoritative .trust-cell-label{color:var(--ink)}

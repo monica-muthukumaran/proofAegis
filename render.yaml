@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: proofaegis-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120 app:app
+    healthCheckPath: /api/health
+    plan: free
+    envVars:
+      - key: USE_MOCK_DATA
+        value: "false"
+      - key: AUTH_REQUIRED
+        value: "true"
+      - key: ALLOWED_ORIGINS
+        value: https://proofaegis.web.app
+      # Add the actual Firebase Hosting URL above before the first live deploy.
+      # Render asks for all sync:false values in its Blueprint setup UI.
+      # Keep their values out of this repository.
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: GOOGLE_CLOUD_PROJECT
+        sync: false
+      - key: FIREBASE_STORAGE_BUCKET
+        sync: false

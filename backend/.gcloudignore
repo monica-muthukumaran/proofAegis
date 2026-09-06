@@ -1,0 +1,32 @@
+# Controls what is UPLOADED to Cloud Build. .dockerignore only controls what
+# lands in the image — a secret excluded there is still shipped to the build
+# staging bucket without this file.
+venv/
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+
+.env
+.env.*
+serviceAccountKey.json
+*-adminsdk-*.json
+
+.local_storage/
+# The eval reports are READ AT RUNTIME by GET /api/analytics/accuracy, so they
+# have to be in the image or that panel 404s in production. Everything else
+# under data/ stays out: portfolio.json is only read by the in-memory
+# datastore, and production reads Firestore instead.
+#
+# Note the shape. Gitignore semantics cannot re-include a file whose PARENT
+# DIRECTORY is excluded, so `data/` followed by `!data/generated/x.json` does
+# nothing. The directories have to be walked open one level at a time.
+data/*
+!data/generated/
+data/generated/*
+!data/generated/eval_report.json
+!data/generated/extraction_report.json
+
+tests/
+TESTING.md
+run.ps1

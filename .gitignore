@@ -1,0 +1,45 @@
+# --- Python ---
+__pycache__/
+*.pyc
+/.venv
+/backend/venv
+/backend/.seed-venv
+/backend/.pytest_cache
+/backend/.coverage
+
+# --- Secrets: never commit any of these ---
+/backend/.env
+/backend/.env.production
+/backend/serviceAccountKey.json
+*serviceAccount*.json
+/frontend/.env
+/frontend/.env.production
+/proofaegis-frontend/.env
+/proofaegis-frontend/.env.local
+/proofaegis-frontend/.env.production
+
+# Backups and variants of env files. The plain names above are not enough:
+# a .env.bak still carries a live GEMINI_API_KEY, and a repo published for
+# judging is public. Ignore every variant rather than each one as it appears.
+.env
+.env.*
+*.env
+!.env.example
+!*.env.example
+
+# --- Node / build output ---
+node_modules/
+/frontend/dist
+/frontend/.vite
+/proofaegis-frontend/dist
+/proofaegis-frontend/.vite
+/frontend/.firebase
+/proofaegis-frontend/.firebase
+
+# --- Generated artefacts (regenerate with the scripts; do not commit) ---
+# Uploaded documents when running on the local storage backend.
+/backend/.local_storage/
+# Synthetic PDFs: rebuild with scripts/generate_synthetic_pdfs.py
+/backend/data/synthetic_cases/
+# Bulk synthetic portfolio data: rebuild with scripts/generate_synthetic_data.py
+/backend/data/generated/

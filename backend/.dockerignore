@@ -1,0 +1,35 @@
+# Virtualenvs and caches
+venv/
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+
+# Secrets — every env file, not just .env. A .env.bak carrying a live API key
+# would otherwise be baked into the published image.
+.env
+.env.*
+serviceAccountKey.json
+*-adminsdk-*.json
+
+# Local-only state: uploaded PDFs written by the on-disk storage backend, and
+# generated demo data only the in-memory datastore ever reads.
+.local_storage/
+# The eval reports are READ AT RUNTIME by GET /api/analytics/accuracy, so they
+# have to be in the image or that panel 404s in production. Everything else
+# under data/ stays out: portfolio.json is only read by the in-memory
+# datastore, and production reads Firestore instead.
+#
+# Note the shape. Gitignore semantics cannot re-include a file whose PARENT
+# DIRECTORY is excluded, so `data/` followed by `!data/generated/x.json` does
+# nothing. The directories have to be walked open one level at a time.
+data/*
+!data/generated/
+data/generated/*
+!data/generated/eval_report.json
+!data/generated/extraction_report.json
+
+# Not needed at runtime
+tests/
+TESTING.md
+run.ps1

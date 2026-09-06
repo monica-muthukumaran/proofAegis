@@ -1,0 +1,297 @@
+/* ==========================================================================
+   Categorical colour — the evidence graph and the exception vocabulary
+   ==========================================================================
+   styles.css is one teal accent on slate. That reads as restrained on a form
+   and as undifferentiated on the evidence graph, where four genuinely
+   different KINDS of thing sit in four columns and were told apart only by a
+   hairline border tint.
+
+   These are identity colours, assigned by what a node IS. They never change
+   with rank, ordering, or filtering — a document node is blue on every case
+   in the product.
+
+   The three categorical hues were validated as a set against both surfaces
+   (all-pairs, CVD and normal vision). A fourth categorical hue does not
+   survive the dark-mode gate beside blue, which is why `finding` is not one:
+   it uses the reserved status colour, and that is correct rather than a
+   workaround — a finding IS a status.
+
+   Light mode puts aqua and amber below 3:1 against the surface, so the relief
+   rule applies: every node carries a visible text label and a type chip, and
+   colour is never the only thing distinguishing one from another.
+   ========================================================================== */
+:root{
+  --viz-document:#2a78d6;
+  --viz-document-soft:#e8f1fc;
+  --viz-value:#1baf7a;
+  --viz-value-soft:#e2f6ee;
+  --viz-rule:#eda100;
+  --viz-rule-soft:#fdf2d9;
+  /* Not a fourth categorical hue — an alias for the theme's one signal
+     colour. A finding IS a status, and the red on a finding node must be the
+     same red as "high risk" in the queue and the marker outside its tolerance
+     band, or the product has two reds that mean the same thing. */
+  --viz-finding:var(--exception);
+  --viz-finding-soft:var(--exception-soft);
+  /* Routing — where the case goes next. Deliberately the neutral ink rather
+     than a fifth hue: it is an outcome, not a kind of evidence, and giving it
+     a colour of its own would make the graph look like it has five subjects
+     when it has four. */
+  --viz-routing:var(--muted);
+  --viz-routing-soft:var(--panel-elevated);
+}
+:root[data-theme="dark"]{
+  --viz-document:#3987e5;
+  --viz-document-soft:rgba(57,135,229,.16);
+  --viz-value:#199e70;
+  --viz-value-soft:rgba(25,158,112,.18);
+  --viz-rule:#c98500;
+  --viz-rule-soft:rgba(201,133,0,.18);
+  --viz-finding:var(--exception);
+  --viz-finding-soft:var(--exception-soft);
+  --viz-routing:var(--muted);
+  --viz-routing-soft:var(--panel-elevated);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --viz-document:#3987e5;
+    --viz-document-soft:rgba(57,135,229,.16);
+    --viz-value:#199e70;
+    --viz-value-soft:rgba(25,158,112,.18);
+    --viz-rule:#c98500;
+    --viz-rule-soft:rgba(201,133,0,.18);
+    --viz-finding:var(--exception);
+    --viz-finding-soft:var(--exception-soft);
+    --viz-routing:var(--muted);
+    --viz-routing-soft:var(--panel-elevated);
+  }
+}
+
+/* --- Evidence graph, rebuilt ------------------------------------------- */
+/* The graph is the product's argument, and it was the least legible screen in
+   it: 120px boxes with a hairline tint on a dotted field, at a size that made
+   a six-node case look sparse and a twelve-node case look tangled.
+
+   Four changes carry the weight — a taller canvas with banded columns so the
+   left-to-right reading order is structural rather than implied; a coloured
+   header strip and type chip on every node so the kind is readable without
+   consulting the legend; hue and arrowheads on the edges so direction is
+   visible; and real padding, because the thing being demonstrated is that a
+   number traces back to a page, and a reader has to be able to follow the
+   line to believe it. */
+/* The frame. The canvas inside it is sized in pixels by the component, from
+   the number of columns and the busiest one, so a dense case gets a wider
+   surface rather than tighter columns — and scrolls when that is wider than
+   the panel. Cramming a twelve-node graph into whatever width the panel has
+   is what made it unreadable. */
+.graph-scroll{
+  overflow-x:auto;
+  overflow-y:hidden;
+  -webkit-overflow-scrolling:touch;
+  border-radius:var(--radius-md);
+}
+.graph-canvas{
+  /* min-height is gone on purpose: the height is computed and set inline, and
+     a min-height fighting it would leave dead space under a two-node case. */
+  min-height:0;
+  min-width:100%;
+  border-radius:var(--radius-md);
+  background-color:var(--surface-soft);
+  background-image:radial-gradient(circle at 1px 1px,color-mix(in srgb,var(--muted) 26%,transparent) 1px,transparent 0);
+  background-size:24px 24px;
+}
+:root[data-theme="dark"] .graph-canvas,
+:root:not([data-theme="light"]) .graph-canvas{
+  background-color:var(--surface-soft);
+  background-image:radial-gradient(circle at 1px 1px,color-mix(in srgb,var(--muted) 30%,transparent) 1px,transparent 0);
+}
+.graph-column-band{
+  position:absolute;top:0;bottom:0;
+  border-left:1px dashed var(--line);
+  pointer-events:none;
+}
+.graph-column-band.alt{background:color-mix(in srgb,var(--muted) 5%,transparent)}
+:root[data-theme="dark"] .graph-column-band.alt{background:rgba(255,255,255,.025)}
+.graph-column-title{
+  top:14px;
+  padding:4px 10px;
+  border-radius:999px;
+  background:var(--surface);
+  border:1px solid var(--line);
+  color:var(--muted);
+  font-size:.6875rem;
+  letter-spacing:.07em;
+  z-index:2;
+}
+
+.graph-node{
+  min-width:176px;max-width:214px;
+  padding:0;overflow:hidden;
+  border:1px solid var(--border-strong);
+  border-radius:10px;
+  background:var(--surface);
+  /* Nearly flat, like every other surface in this theme. Depth comes from
+     the border and the space around it. */
+  box-shadow:var(--shadow-panel);
+  text-align:left;font-weight:400;
+}
+/* The coloured strip: the node's type, stated so it survives being read at a
+   glance from the back of a room. */
+.graph-node::before{
+  content:"";display:block;height:4px;width:100%;
+  background:var(--node-hue,var(--border-strong));
+}
+.graph-node-head{
+  display:flex;align-items:center;gap:6px;
+  padding:9px 12px 0;
+  color:var(--node-hue,var(--muted));
+  font-size:.625rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+}
+.graph-node-head::before{
+  content:"";width:7px;height:7px;border-radius:2px;flex:none;
+  background:var(--node-hue,var(--muted));
+}
+.graph-node-body{padding:5px 12px 12px;font-size:.8125rem;font-weight:700;line-height:1.32}
+.graph-node .graph-node-detail{
+  margin-top:5px;color:var(--muted);font-size:.75rem;font-weight:400;line-height:1.35;
+}
+/* The value a node carries, when it has one. Tabular figures so a column of
+   amounts lines up on the decimal. */
+.graph-node-value{
+  display:block;margin-top:4px;
+  font-size:.9375rem;font-weight:700;letter-spacing:-.01em;
+  font-variant-numeric:tabular-nums;
+}
+
+.graph-node-document{--node-hue:var(--viz-document)}
+.graph-node-extracted_value{--node-hue:var(--viz-value)}
+.graph-node-business_rule{--node-hue:var(--viz-rule);border-style:dashed}
+.graph-node-finding{--node-hue:var(--viz-finding);border-color:var(--viz-finding)}
+.graph-node-finding .graph-node-value{color:var(--viz-finding)}
+.graph-node-routing{--node-hue:var(--viz-routing)}
+
+.graph-node:hover,.graph-node.selected,
+.graph-canvas.has-focus .graph-node:not(.dimmed){
+  border-color:var(--node-hue,var(--accent));
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--node-hue,var(--accent)) 24%,transparent);
+}
+
+/* Edges carry their SOURCE node's hue, so a line inherits the colour of what
+   it comes from and a whole chain reads as one colour resolving into the
+   finding's red. */
+.graph-edge{stroke:color-mix(in srgb,var(--muted) 45%,transparent);stroke-width:1.7}
+.graph-edge.typed-document{stroke:color-mix(in srgb,var(--viz-document) 58%,transparent)}
+.graph-edge.typed-extracted_value{stroke:color-mix(in srgb,var(--viz-value) 58%,transparent)}
+.graph-edge.typed-business_rule{stroke:color-mix(in srgb,var(--viz-rule) 66%,transparent)}
+.graph-edge.typed-finding{stroke:color-mix(in srgb,var(--viz-finding) 66%,transparent)}
+.graph-edge.active{stroke-width:2.8;opacity:1}
+.graph-edge.dimmed{opacity:.12}
+
+.graph-legend{gap:16px}
+.graph-legend-swatch{width:11px;height:11px;border-radius:3px}
+
+/* --- Trust row: what the model said vs what the code computed ---------- */
+.trust-row{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  gap:1px;
+  background:var(--line);
+  border:1px solid var(--line);
+  border-radius:var(--radius-md);
+  overflow:hidden;
+}
+.trust-cell{background:var(--surface);padding:14px 16px}
+.trust-cell-label{
+  display:block;color:var(--muted);
+  font-size:.6875rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+}
+.trust-cell-value{
+  display:block;margin-top:5px;
+  font-size:1.25rem;font-weight:700;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;
+}
+/* The model's figure, when it was overridden. Struck through, because the
+   entire point is that this number did not survive. */
+.trust-cell-superseded .trust-cell-value{color:var(--muted);text-decoration:line-through}
+.trust-cell-authoritative{background:var(--accent-soft)}
+.trust-cell-authoritative .trust-cell-value{color:var(--accent-strong)}
+.trust-verdict{
+  display:flex;align-items:center;gap:8px;
+  padding:11px 14px;
+  border-radius:var(--radius-sm);
+  font-size:.875rem;font-weight:700;
+}
+.trust-verdict-overridden{
+  background:var(--viz-finding-soft);color:var(--viz-finding);
+  border:1px solid color-mix(in srgb,var(--viz-finding) 42%,transparent);
+}
+.trust-verdict-agreed{
+  background:var(--accent-soft);color:var(--accent-strong);
+  border:1px solid color-mix(in srgb,var(--accent) 40%,transparent);
+}
+
+/* --- Cross-case hero: the delta the product is actually selling -------- */
+.crosscase-panel{
+  border:1px solid var(--line);
+  border-radius:var(--radius-md);
+  overflow:hidden;
+  background:var(--surface);
+}
+.crosscase-head{
+  padding:22px;
+  background:linear-gradient(135deg,
+    color-mix(in srgb,var(--viz-finding) 10%,var(--surface)),
+    color-mix(in srgb,var(--accent) 8%,var(--surface)));
+  border-bottom:1px solid var(--line);
+}
+.crosscase-figure{
+  font-size:clamp(2rem,4.6vw,3rem);font-weight:700;letter-spacing:-.035em;
+  color:var(--viz-finding);line-height:1.05;font-variant-numeric:tabular-nums;
+}
+.crosscase-split{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line)}
+.crosscase-half{background:var(--surface);padding:18px 22px}
+.crosscase-half-label{
+  display:flex;align-items:center;gap:7px;
+  color:var(--muted);font-size:.6875rem;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;
+}
+.crosscase-half-label::before{
+  content:"";width:9px;height:9px;border-radius:2px;flex:none;
+  background:var(--half-hue,var(--muted));
+}
+.crosscase-half-single{--half-hue:var(--viz-routing)}
+.crosscase-half-cross{--half-hue:var(--viz-finding)}
+.crosscase-bar{
+  display:flex;height:12px;border-radius:999px;overflow:hidden;
+  background:var(--panel-elevated);gap:2px;
+}
+.crosscase-bar-single{background:var(--viz-routing)}
+.crosscase-bar-cross{background:var(--viz-finding)}
+.crosscase-type-row{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 0;border-bottom:1px solid var(--line);
+}
+.crosscase-type-row:last-child{border-bottom:0}
+@media(max-width:640px){.crosscase-split{grid-template-columns:1fr}}
+
+/* --- Exception type, coloured by family -------------------------------- */
+/* A cross-case finding and a price variance are different arguments, and the
+   queue rendered both in the same grey. The dot is the family. */
+.type-dot{
+  display:inline-block;width:7px;height:7px;border-radius:2px;
+  margin-right:7px;flex:none;
+}
+.type-dot-cross{background:var(--viz-finding)}
+.type-dot-single{background:var(--viz-document)}
+.type-dot-clean{background:var(--verified)}
+.type-dot-note{background:var(--viz-rule)}
+
+/* --- Measurement tables ------------------------------------------------- */
+.metric-bar{
+  position:relative;height:6px;border-radius:999px;
+  background:var(--panel-elevated);overflow:hidden;min-width:60px;
+}
+.metric-bar-fill{position:absolute;inset:0 auto 0 0;border-radius:999px;background:var(--verified)}
+.metric-bar-fill.warn{background:var(--warning)}
+.metric-bar-fill.bad{background:var(--exception)}
+.num{font-variant-numeric:tabular-nums}
