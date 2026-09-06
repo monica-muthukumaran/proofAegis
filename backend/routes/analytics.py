@@ -8,9 +8,10 @@ arithmetic over stored outcomes — see services/analytics_service.py.
 
 Cost-aware by construction: every route takes a bounded `days` window,
 aggregates rather than returning rows, and caps how many vendors it will
-rank. Those are the same constraints a BigQuery-backed version needs to keep
-scans small, so moving the execution engine later does not change this
-surface.
+rank. Those constraints are what let the same surface be served by either
+engine — see services/analytics_gateway.py. These routes no longer read the
+case collection themselves, because on the BigQuery path nothing should:
+the window and the row cap become the SQL predicate and the LIMIT.
 """
 from __future__ import annotations
 
@@ -20,8 +21,7 @@ import os
 from flask import Blueprint, jsonify, request
 
 from auth import require_auth
-from datastore import get_datastore
-from services import analytics_service, trust_ledger
+from services import analytics_gateway, trust_ledger
 
 bp = Blueprint("analytics", __name__, url_prefix="/api/analytics")
 
@@ -50,18 +50,20 @@ def overview():
     """Everything the analytics screen needs in one round trip — the page
     renders several linked views of the same population, and fetching them
     separately would let them disagree if a case changed in between."""
-    cases = get_datastore().list_exceptions()
     days = _window()
     return jsonify({
-        "summary": analytics_service.portfolio_summary(cases, days),
-        "vendor_risk": analytics_service.vendor_risk(cases, days, limit=12),
-        "trend": analytics_service.monthly_trend(cases, months=12),
-        "ageing": analytics_service.ageing(cases, days),
+        "summary": analytics_gateway.portfolio_summary(days),
+        "vendor_risk": analytics_gateway.vendor_risk(days, limit=12),
+        "trend": analytics_gateway.monthly_trend(months=12),
+        "ageing": analytics_gateway.ageing(days),
         # The product's actual claim, measured on the same population as
         # everything above it: what a per-invoice check would not have found.
-        "cross_case": analytics_service.cross_case_value(cases, days),
+        "cross_case": analytics_gateway.cross_case_value(days),
         # How often the deterministic layer had to correct the model.
         "trust": trust_ledger.summarize(),
+        # Which engine produced the figures above, so the screen can say so
+        # rather than leaving a viewer to assume.
+        "engine": analytics_gateway.engine_status(),
     })
 
 
@@ -73,8 +75,7 @@ def cross_case():
     Separate from /overview so the demo can open on this one figure without
     waiting for the vendor ranking and the trend series to aggregate.
     """
-    cases = get_datastore().list_exceptions()
-    return jsonify(analytics_service.cross_case_value(cases, _window()))
+    return jsonify(analytics_gateway.cross_case_value(_window()))
 
 
 @bp.get("/accuracy")
@@ -129,27 +130,24 @@ def trust():
 @bp.get("/vendor-risk")
 @require_auth
 def vendor_risk():
-    cases = get_datastore().list_exceptions()
     try:
         limit = int(request.args.get("limit", 25))
     except (TypeError, ValueError):
         limit = 25
-    return jsonify(analytics_service.vendor_risk(cases, _window(), limit=min(limit, MAX_VENDOR_ROWS)))
+    return jsonify(analytics_gateway.vendor_risk(_window(), limit=min(limit, MAX_VENDOR_ROWS)))
 
 
 @bp.get("/trends")
 @require_auth
 def trends():
-    cases = get_datastore().list_exceptions()
     try:
         months = int(request.args.get("months", 12))
     except (TypeError, ValueError):
         months = 12
-    return jsonify(analytics_service.monthly_trend(cases, months=max(1, min(months, 24))))
+    return jsonify(analytics_gateway.monthly_trend(months=max(1, min(months, 24))))
 
 
 @bp.get("/ageing")
 @require_auth
 def ageing():
-    cases = get_datastore().list_exceptions()
-    return jsonify(analytics_service.ageing(cases, _window()))
+    return jsonify(analytics_gateway.ageing(_window()))

@@ -80,6 +80,22 @@ class Config:
     GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
     GEMINI_REASONING_MODEL = os.environ.get("GEMINI_REASONING_MODEL", "gemini-3.5-flash")
 
+    # --- Analytics engine ---
+    # "firestore" aggregates in Python over a full collection read; that is
+    # correct at a few hundred cases and is what the test suite runs.
+    # "bigquery" pushes the same aggregations down as SQL — see
+    # services/bigquery_executor.py for why the cross-case layer is the
+    # reason this exists rather than the analytics screen.
+    #
+    # Defaults to firestore so a checkout with no GCP credentials still runs
+    # every test and every route offline.
+    ANALYTICS_ENGINE = os.environ.get("ANALYTICS_ENGINE", "firestore").strip().lower()
+    BIGQUERY_DATASET = os.environ.get("BIGQUERY_DATASET", "proofaegis_analytics")
+    BIGQUERY_TABLE = os.environ.get("BIGQUERY_TABLE", "cases")
+    # asia-south1 like everything else, so an analytics query never crosses a
+    # region boundary to read its own data.
+    BIGQUERY_LOCATION = os.environ.get("BIGQUERY_LOCATION", "asia-south1")
+
     # --- OCR for scanned documents ---
     # Needs the Tesseract binary on PATH (and TESSDATA_PREFIX pointing at its
     # language data). Off by default: a server without Tesseract should say so

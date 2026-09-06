@@ -223,13 +223,16 @@ async def get_investigation_hypotheses(exception_id: str) -> Optional[AIResult]:
 
 def _vendor_history(ds, vendor_name: Optional[str], exclude_exception_id: str) -> dict:
     """This vendor's record across the workspace, counted not judged."""
-    from services.analytics_service import vendor_risk
+    from services import analytics_gateway
     from services.matching_service import vendor_key
 
     if not vendor_name:
         return {}
     target = vendor_key(vendor_name)
-    ranked = vendor_risk(ds.list_exceptions(), days=365, limit=200)
+    # Through the gateway, so opening one case does not read the whole
+    # collection when the BigQuery engine is on — this is the per-case path,
+    # and it is the one that runs most often.
+    ranked = analytics_gateway.vendor_risk(days=365, limit=200)
     for row in ranked.get("vendors", []):
         if vendor_key(row.get("vendor_name")) == target:
             return dict(row)

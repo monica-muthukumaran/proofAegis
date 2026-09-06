@@ -9,6 +9,7 @@ from flask import Blueprint, jsonify
 from auth import require_auth
 from datastore import get_datastore
 from config import config
+from services import analytics_gateway
 
 bp = Blueprint("settings", __name__, url_prefix="/api/settings")
 
@@ -41,6 +42,10 @@ def get_mode():
         # kind of half-truth this endpoint exists to prevent.
         "storage_bucket": config.STORAGE_BUCKET if storage_kind == "gcs" else None,
         "gemini_configured": bool(config.GEMINI_API_KEY),
+        # Which engine served the analytics figures — see
+        # services/analytics_gateway.py. Surfaced so the UI can name it
+        # rather than leaving a viewer to assume which one ran.
+        **analytics_gateway.engine_status(),
         # Configured is not the same as used: in mock mode the key is present
         # but no model is ever called, and the UI must say so.
         "gemini_active": bool(config.GEMINI_API_KEY) and not config.USE_MOCK_DATA,

@@ -12,6 +12,11 @@ google-cloud-firestore==2.16.1
 # Cloud Storage — uploaded case documents
 google-cloud-storage==2.18.2
 
+# BigQuery — the analytics engine at volume (services/bigquery_executor.py).
+# Only imported when ANALYTICS_ENGINE=bigquery; the Firestore path and the
+# whole test suite run without credentials.
+google-cloud-bigquery==3.27.0
+
 # Google ADK — document extraction + resolution drafting agents
 google-adk==2.5.0
 google-genai>=2.9,<3
@@ -22,3 +27,6 @@ pymupdf==1.24.9
 # Testing
 pytest==8.3.2
 pytest-cov==5.0.0
+# Executes the BigQuery SQL offline so tests/test_bigquery_parity.py can prove
+# the two engines agree on a laptop with no GCP project.
+duckdb==1.1.3
