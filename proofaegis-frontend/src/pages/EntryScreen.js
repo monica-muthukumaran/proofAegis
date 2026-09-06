@@ -1,7 +1,23 @@
-import { html } from "../lib.js";
+import { html, useState } from "../lib.js";
 import { Icon } from "../components/ui/primitives.js";
+import { useAuth } from "../services/AuthContext.js";
 
-export function EntryScreen({ onStartTour, onSignIn, onSignUp }) {
+export function EntryScreen({ onStartTour, onSignIn, onSignUp, onSignedIn }) {
+  // One click into the real workspace. Previously the only ways past this
+  // screen were the tour and a password form, and in a live Firebase build
+  // the sign-in screen offered no demo path at all — so a first-time visitor
+  // with no account could not reach the product, only the tour of it.
+  const { continueAsDemo, demoAvailable, loading } = useAuth();
+  const [entering, setEntering] = useState(false);
+
+  const handleEnterDemo = async () => {
+    setEntering(true);
+    const result = await continueAsDemo();
+    setEntering(false);
+    if (result.ok && onSignedIn) onSignedIn();
+    else if (!result.ok) onSignIn();
+  };
+
   return html`
     <div class="centered-screen">
       <div style=${{ width: "100%", maxWidth: 880 }} class="stack gap-24">
@@ -48,9 +64,18 @@ export function EntryScreen({ onStartTour, onSignIn, onSignUp }) {
               <h3 class="text-section-title">Sign In</h3>
               <p class="text-secondary">Open your workspace to review, upload, and resolve invoice exceptions.</p>
             </div>
+            ${demoAvailable ? html`
+              <button class="btn btn-primary btn-block" onClick=${handleEnterDemo} disabled=${entering || loading}>
+                ${entering ? "Opening workspace…" : "Open the demo workspace"}
+              </button>
+            ` : null}
             <button class="btn btn-secondary btn-block" onClick=${onSignIn}>Sign in</button>
             <button class="btn btn-ghost btn-block" onClick=${onSignUp}>Create an account</button>
-            <p class="text-muted text-small">Uses a demo workspace in this build — see the sign-in screen for demo credentials.</p>
+            <p class="text-muted text-small">
+              ${demoAvailable
+                ? "The demo workspace signs in to a real account holding synthetic data. No sign-up needed."
+                : "Sign in to open your workspace."}
+            </p>
           </div>
         </div>
 

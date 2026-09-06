@@ -3,7 +3,7 @@ import { useAuth } from "../services/AuthContext.js";
 import { Icon } from "../components/ui/primitives.js";
 
 export function LoginScreen({ onBackToTour, onSignedIn, onCreateAccount }) {
-  const { signIn, continueAsDemo, resetPassword, loading, error, demoCredentials, isFirebaseMode } = useAuth();
+  const { signIn, continueAsDemo, resetPassword, loading, error, demoCredentials, demoAvailable, isFirebaseMode } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [localError, setLocalError] = useState(null);
@@ -76,12 +76,14 @@ export function LoginScreen({ onBackToTour, onSignedIn, onCreateAccount }) {
           <hr class="hairline" style=${{ flex: 1 }} />
         </div>
 
-        ${!isFirebaseMode ? html`<button class="btn btn-secondary btn-block" onClick=${handleDemo} disabled=${loading}>
+        ${demoAvailable ? html`<button class="btn btn-secondary btn-block" onClick=${handleDemo} disabled=${loading}>
           ${loading ? "Loading…" : "Continue with demo workspace"}
         </button>` : null}
         <button class="btn btn-ghost btn-block" onClick=${onCreateAccount} disabled=${loading}>Create an account</button>
-        ${!isFirebaseMode ? html`<div class="panel-elevated text-small text-muted stack gap-4" style=${{ padding: "10px 12px" }}>
-          <div style=${{ fontWeight: 600, color: "var(--text-secondary)" }}>Demo workspace — not production authentication</div>
+        ${demoAvailable ? html`<div class="panel-elevated text-small text-muted stack gap-4" style=${{ padding: "10px 12px" }}>
+          <div style=${{ fontWeight: 600, color: "var(--text-secondary)" }}>
+            ${isFirebaseMode ? "Demo workspace — synthetic data only" : "Demo workspace — not production authentication"}
+          </div>
           <div>Email: ${demoCredentials.email}</div>
           <div>Password: ${demoCredentials.password}</div>
         </div>` : null}

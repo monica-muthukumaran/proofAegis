@@ -182,7 +182,7 @@ export function App() {
   let pageContent = null;
 
   if (view === "entry") {
-    pageContent = html`<${EntryScreen} onStartTour=${startTour} onSignIn=${() => setView("login")} onSignUp=${() => setView("signup")} />`;
+    pageContent = html`<${EntryScreen} onStartTour=${startTour} onSignIn=${() => setView("login")} onSignUp=${() => setView("signup")} onSignedIn=${() => { setGuestPreview(false); setView("dashboard"); }} />`;
   } else if (view === "login") {
     pageContent = html`<${LoginScreen} onBackToTour=${startTour} onCreateAccount=${() => setView("signup")} onSignedIn=${() => { setGuestPreview(false); setView("dashboard"); }} />`;
   } else if (view === "signup") {

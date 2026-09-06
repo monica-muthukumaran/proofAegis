@@ -12,11 +12,31 @@ import {
 
 const DEMO_EMAIL = "judge@demo.proofaegis.local";
 const DEMO_PASSWORD = "demo-only";
+
+// A REAL Firebase account, for the one-click demo entry in a live deployment.
+// Without this, `continueAsDemo` has nothing to sign in with once a Firebase
+// project is configured, and a reviewer opening the deployed site meets a
+// password form with no way through it.
+//
+// This is a genuine sign-in — real Firebase Auth, a real ID token, the same
+// `require_auth` path as any other user. It is not a bypass, and there is no
+// code path here that grants access without a token.
+//
+// These two values are compiled into the published bundle and anyone can read
+// them out of it. That is acceptable for exactly this account and no other:
+// it holds synthetic data, it is the account handed out on the sign-in screen
+// anyway, and it should be created with no privileges beyond the demo
+// workspace. Never point these at an account with real data.
+const FIREBASE_DEMO_EMAIL = import.meta.env.VITE_DEMO_EMAIL || "";
+const FIREBASE_DEMO_PASSWORD = import.meta.env.VITE_DEMO_PASSWORD || "";
 const SESSION_KEY = "proofaegis_demo_session"; // sessionStorage only — never localStorage
 const DEMO_USERS_KEY = "proofaegis_demo_users";
 
 const AuthContext = createContext(null);
 const FIREBASE_MODE = isFirebaseConfigured();
+// Whether one-click demo entry can work at all in this build. In demo-auth
+// mode it always can; in Firebase mode it needs a real account to sign into.
+const DEMO_AVAILABLE = !FIREBASE_MODE || Boolean(FIREBASE_DEMO_EMAIL && FIREBASE_DEMO_PASSWORD);
 
 function readSession() {
   try {
@@ -133,10 +153,13 @@ export function AuthProvider({ children }) {
 
   const continueAsDemo = async () => {
     if (FIREBASE_MODE) {
-      // No real demo account by default in a live Firebase project — surface
-      // this clearly rather than silently pretending to sign in.
-      setError("Demo workspace login isn't available once a real Firebase project is configured. Use a real account.");
-      return { ok: false, error: "demo_unavailable_in_firebase_mode" };
+      if (!DEMO_AVAILABLE) {
+        // Still the honest answer when no demo account was configured for
+        // this build: say so rather than pretending to sign in.
+        setError("A demo workspace is not configured for this deployment. Sign in with an account.");
+        return { ok: false, error: "demo_unavailable_in_firebase_mode" };
+      }
+      return signIn(FIREBASE_DEMO_EMAIL, FIREBASE_DEMO_PASSWORD);
     }
     return signIn(DEMO_EMAIL, DEMO_PASSWORD);
   };
@@ -173,7 +196,13 @@ export function AuthProvider({ children }) {
   const value = {
     user, loading, error, signIn, signUp, continueAsDemo, signOut, resetPassword, getIdToken,
     isFirebaseMode: FIREBASE_MODE,
-    demoCredentials: { email: DEMO_EMAIL, password: DEMO_PASSWORD },
+    // Whether to offer the one-click demo button. Consumers ask this rather
+    // than checking `isFirebaseMode`, which is what previously hid the button
+    // in exactly the deployment where a first-time visitor needed it most.
+    demoAvailable: DEMO_AVAILABLE,
+    demoCredentials: FIREBASE_MODE
+      ? { email: FIREBASE_DEMO_EMAIL, password: FIREBASE_DEMO_PASSWORD }
+      : { email: DEMO_EMAIL, password: DEMO_PASSWORD },
   };
   return html`<${AuthContext.Provider} value=${value}>${children}<//>`;
 }
