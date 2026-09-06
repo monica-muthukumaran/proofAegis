@@ -155,7 +155,7 @@ backend/
 │   ├── pdf_layouts.py               6 document dialects
 │   └── seed_firestore.py            push seed + portfolio to Firestore
 │
-└── tests/                      185 tests, 16 files
+└── tests/                      231 tests, 18 files
 ```
 
 ---
@@ -691,7 +691,7 @@ population, not an estimate of accuracy on a real inbox.
 
 ## 14. Tests
 
-**185 tests across 16 files.**
+**231 tests across 18 files.**
 
 ```bash
 cd backend && ./venv/Scripts/python.exe -m pytest -q

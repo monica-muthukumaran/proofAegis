@@ -1,16 +1,26 @@
 # ProofAegis — The Pitch
 
-> **Most AP automation decides what to approve.**
-> **ProofAegis investigates what failed — and what shouldn't have passed.**
+> **A vendor sends you the same bill twice, under two different numbers.**
+> **Both invoices are perfect. Every AP system on the market pays both.**
 
 ---
 
 ## The one-liner
 
-Accounts Payable software is good at catching the invoice in front of it. It is
-blind to the one that looks perfect and is a second copy of last month's.
+Say it to someone who has never worked in accounts payable, because that is
+who is judging:
 
-ProofAegis reads across the whole workspace, and on our 320-case portfolio it
+> A supplier bills you for the same work twice. The second invoice has a new
+> number and a new date. Nothing on it is wrong — the purchase order agrees,
+> the delivery note agrees, the arithmetic agrees. It is a perfect document.
+> Your software approves it, because your software is looking at that invoice.
+>
+> **The evidence that it is a duplicate is in a different file.**
+
+That is the shape of the five most expensive failures in AP, and none of them
+are visible from inside the invoice they arrive on.
+
+ProofAegis reads across the whole workspace. On our 320-case portfolio it
 surfaces **₹10.66 lakh in exposure that a per-invoice system would have passed
 for payment** — because 9 of those 13 findings scored a *full three-way match*
 on their own documents.
@@ -97,7 +107,7 @@ policed.
 
 ---
 
-## The three things that make this defensible
+## The four things that make this defensible
 
 ### 1. We measure ourselves, and we own the failures
 
@@ -163,7 +173,39 @@ measurement into a marketing figure:
 This is the only screen in the product that shows its own AI being wrong. In a
 day of demos where every AI is right, that is the thing people remember.
 
-### 3. Every finding traces to a page you can open
+### 3. The cross-case layer is a BigQuery workload, and we say why
+
+The obvious hostile question is *why BigQuery for 320 invoices?* At that size
+Python is faster and free, and we say so in the code.
+
+The answer is where the cross-case checks read from. Every one of them —
+duplicate, cumulative over-billing, changed bank details, price drift over the
+last six invoices, cadence — answers a question about ONE invoice by reading
+the vendor's WHOLE history. Firestore serves that with an unfiltered
+collection stream. At 320 cases that is free. At the volume a real AP function
+runs, it is a full-collection scan per invoice — of exactly the feature that
+makes this product different from a per-invoice matcher.
+
+So BigQuery is not an analytics add-on here. **Cross-case investigation is the
+differentiator, and cross-case questions are grouped aggregations over
+history. That is where the differentiator has to live.**
+
+Both engines are live behind one flag, and a test asserts they agree:
+`tests/test_bigquery_parity.py` runs the real SQL through DuckDB offline and
+compares every aggregate to the Python, over four windows and a population
+seeded with the rows that break naive SQL — a null date, null money, a vendor
+with no id. Writing it caught three bugs, including a `GROUP BY` that BigQuery
+resolves and DuckDB does not, and naive timestamps that made every computed
+age correct in London and wrong in Chennai.
+
+The five analytics are also exposed as MCP Toolbox tools, so an agent can
+answer *"which vendors should I audit this quarter?"* by calling one and
+reading real rows. **There is no tool that accepts SQL.** The agent picks a
+question and a window; it cannot compose an aggregation. That is the same
+boundary as everywhere else in this system — a number a human acts on never
+comes from a model — enforced at the data layer instead of checked afterwards.
+
+### 4. Every finding traces to a page you can open
 
 The evidence graph is **assembled deterministically** — it is the thing used to
 verify everything else, so it cannot be allowed to hallucinate. Five columns:
@@ -225,10 +267,6 @@ message.
 
 Naming this is worth more than being caught on it.
 
-- **BigQuery and MCP Toolbox** — the analytics functions are written in the
-  exact shape the SQL would take, but the executor is Python over Firestore.
-  This is the most obvious next piece of work and the remaining gap against the
-  brief.
 - **Credit and debit notes** — the most conspicuous missing document type, and
   it interacts directly with over-billing: a credit note is exactly what would
   resolve that finding, and the running total cannot see it.
@@ -248,12 +286,12 @@ The full list is in [`README.md` §17](README.md).
 
 | Time | Beat |
 |---|---|
-| 0:00–0:20 | The frame — what passes is scarier than what fails |
-| 0:20–1:00 | One hero case: upload → evidence graph → click a node to the source PDF |
-| 1:00–1:45 | The cross-case catch — *"no single-invoice check can see this"* |
-| 1:45–2:20 | The trust moment — AI said ₹31,200, code said ₹25,000, code won |
-| 2:20–2:45 | Portfolio analytics — which vendors to audit, and why |
-| 2:45–3:00 | Limitations, in our own words |
+| 0:00–0:25 | The crime — two perfect invoices, and every AP system pays both |
+| 0:25–1:00 | The trust moment — AI said ₹31,200, code said ₹25,000, code won |
+| 1:00–1:50 | One hero case: upload → evidence graph → click a node to the source PDF |
+| 1:50–2:30 | The cross-case catch — *"no single-invoice check can see this"* |
+| 2:30–2:50 | Portfolio analytics — which vendors to audit, and why |
+| 2:50–3:00 | Limitations, in our own words |
 
 Full script: [`DEMO_GUIDE.md`](DEMO_GUIDE.md).
 
@@ -261,11 +299,11 @@ Full script: [`DEMO_GUIDE.md`](DEMO_GUIDE.md).
 
 ## Built on
 
-Google ADK · Gemini 3.5 Flash / Flash-Lite · Cloud Run · Cloud Firestore ·
-Cloud Storage · Firebase Auth · Firebase Hosting · Secret Manager — all in
-`asia-south1`.
+Google ADK · Gemini 3.5 Flash / Flash-Lite · BigQuery · MCP Toolbox for
+Databases · Cloud Run · Cloud Firestore · Cloud Storage · Firebase Auth ·
+Firebase Hosting · Secret Manager — all in `asia-south1`.
 
-**185 tests. Two eval harnesses. Zero contrast failures in either theme.**
+**231 tests. Two eval harnesses. Zero contrast failures in either theme.**
 
 > Synthetic data only. Every vendor, invoice, amount and document is
 > fabricated. No real company, contract or payment is represented.

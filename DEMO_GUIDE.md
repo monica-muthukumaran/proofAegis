@@ -24,19 +24,45 @@ click, and what to do when something goes wrong.
 
 | Time | Beat | The line that carries it |
 |---|---|---|
-| 0:00–0:20 | **The frame** | "What passes is scarier than what fails" |
-| 0:20–1:00 | **One hero case** | Upload → evidence graph → click a node to the source PDF |
-| 1:00–1:45 | **The cross-case catch** | "No single-invoice check can see this" |
-| 1:45–2:20 | **The trust moment** | "The AI said ₹31,200. The code said ₹25,000. The code won." |
-| 2:20–2:45 | **Portfolio analytics** | "Which vendors to audit, and why" |
-| 2:45–3:00 | **Limitations** | In your own words |
+| 0:00–0:25 | **The crime** | "Both invoices are perfect. Every AP system pays both." |
+| 0:25–1:00 | **The trust moment** | "The AI said ₹31,200. The code said ₹25,000. The code won." |
+| 1:00–1:50 | **One hero case** | Upload → evidence graph → click a node to the source PDF |
+| 1:50–2:30 | **The cross-case catch** | "No single-invoice check can see this" |
+| 2:30–2:50 | **Portfolio analytics** | "Which vendors to audit, and why" |
+| 2:50–3:00 | **Limitations** | In your own words |
 
-**Two rules for the whole recording.**
+### The first twenty-five seconds
+
+Open on the crime, not on the control. A judge who has never worked in
+accounts payable must understand what is being stolen before they are asked
+to care how it is caught — and "three-way match" is a phrase that costs you
+the room if it arrives before the story does.
+
+> "A vendor sends you the same bill twice, under two different numbers.
+> Both invoices are perfect. The purchase order agrees. The goods receipt
+> agrees. Every AP system on the market pays both.
+>
+> We found nine invoices like that. Eight lakh rupees. Every document on
+> every one of them agreed."
+
+Only then: *the reason is that those systems check an invoice against its own
+paperwork, and the second copy is in a different file. We read across all of
+them.*
+
+**Do not say "three-way match" before 0:25.** The domain vocabulary is what
+you explain the mechanism WITH; it is not what you open on.
+
+**Three rules for the whole recording.**
 
 1. **Never say a number that is not on screen.** Every figure in this product
    is computed and visible. Quoting one from memory undoes the entire argument.
-2. **The trust moment is the one people remember.** If you are running long,
-   cut the upload animation, not this.
+2. **The trust moment is now the second beat, not the fourth.** It is the one
+   thing no competing project has — every other AI in the room is right for
+   three minutes; yours is visibly wrong and gets overruled by code. Showing
+   it at 0:25 rather than 1:45 means it lands while attention is highest, and
+   it survives a demo that runs out of time.
+3. **If you are running long, cut the portfolio tour.** Not the trust moment,
+   not the limitations.
 
 ---
 
@@ -421,7 +447,7 @@ Run this in the five minutes before you hit record.
 ```
 [ ] Portfolio regenerated (--count 320)
 [ ] Both evals run, JSON written
-[ ] 185 tests passing
+[ ] 231 tests passing
 [ ] Backend up — /api/health returns ok
 [ ] Trust ledger primed — overrides_applied: 1
 [ ] Frontend up

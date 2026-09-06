@@ -35,7 +35,7 @@ configure.
 python -m pytest -q
 ```
 
-**185 tests.** The suite pins `STORAGE_BACKEND=local` and `USE_MOCK_DATA=true`,
+**231 tests.** The suite pins `STORAGE_BACKEND=local` and `USE_MOCK_DATA=true`,
 so a machine holding real credentials can never have a test run reach a live
 bucket.
 
