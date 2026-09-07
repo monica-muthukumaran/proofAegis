@@ -40,7 +40,21 @@ from config import config  # noqa: E402
 from services import bigquery_executor as bq  # noqa: E402
 
 
-def _client():
+def _client(as_user: bool = False):
+    """A BigQuery client, and a clear answer about WHO it authenticates as.
+
+    This is the trip hazard. `config.py` calls `load_dotenv()`, which puts
+    `GOOGLE_APPLICATION_CREDENTIALS` from backend/.env into the environment,
+    so by default this script authenticates as the RUNTIME SERVICE ACCOUNT
+    rather than as the human who typed the command. That account is
+    provisioned for Firestore and Cloud Storage and holds no BigQuery roles,
+    which surfaces as a 403 phrased as though the human lacked permission.
+
+    `--as-user` drops that variable so google-auth falls back to gcloud
+    application-default credentials. That is the right identity for a one-off
+    administrative load: the serving account stays read-only, and nothing in
+    the request path is granted the ability to write here.
+    """
     try:
         from google.cloud import bigquery
     except ImportError:
@@ -49,7 +63,59 @@ def _client():
             "  pip install -r requirements.txt")
     if not config.GOOGLE_CLOUD_PROJECT:
         sys.exit("GOOGLE_CLOUD_PROJECT is not set. See backend/.env.example.")
+
+    if as_user:
+        key = os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
+        if key:
+            print("ignoring the service-account key ("
+                  + os.path.basename(key) + "); using your gcloud credentials")
+        try:
+            import google.auth
+            google.auth.default(
+                scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        except Exception:
+            sys.exit("No application-default credentials for your user account."
+                     + os.linesep + "  gcloud auth application-default login")
+
     return bigquery.Client(project=config.GOOGLE_CLOUD_PROJECT)
+
+
+def _explain_permission_error(exc) -> None:
+    """Turn a 403 into the two commands that fix it.
+
+    A stack trace ending in "User does not have bigquery.datasets.create"
+    does not say WHICH user, and the answer is usually not the one who ran
+    the command.
+    """
+    key = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
+    identity = ("the service account in GOOGLE_APPLICATION_CREDENTIALS"
+                if key else "your gcloud credentials")
+    lines = [
+        "",
+        "BigQuery refused the request, authenticating as " + identity + ".",
+        "",
+        "  " + str(exc),
+        "",
+        "Two ways forward:",
+        "",
+        "  1. Run this load as YOURSELF, leaving the serving account",
+        "     read-only (preferred - nothing in the request path can then",
+        "     write to BigQuery):",
+        "",
+        "       gcloud auth application-default login",
+        "       python -m scripts.load_bigquery --as-user --create "
+        "--from-firestore --verify",
+        "",
+        "  2. Or grant the service account write access, if you would",
+        "     rather not switch identities:",
+        "",
+        "       gcloud projects add-iam-policy-binding PROJECT_ID \\",
+        "         --member=serviceAccount:SA_EMAIL \\",
+        "         --role=roles/bigquery.dataEditor",
+        "",
+        "See DEPLOYMENT_GUIDE.md section 13A.4.",
+    ]
+    sys.exit(os.linesep.join(lines))
 
 
 def create(client) -> None:
@@ -161,21 +227,30 @@ def main() -> None:
                         help="load a generated portfolio JSON file")
     parser.add_argument("--verify", action="store_true",
                         help="read the table back through the executor")
+    parser.add_argument("--as-user", action="store_true",
+                        help="ignore GOOGLE_APPLICATION_CREDENTIALS and use "
+                             "your own gcloud credentials, so the serving "
+                             "service account stays read-only")
     args = parser.parse_args()
 
     if not any([args.create, args.from_firestore, args.from_file, args.verify]):
         parser.print_help()
         return
 
-    client = _client()
-    if args.create:
-        create(client)
-    if args.from_file:
-        from_file(client, args.from_file)
-    if args.from_firestore:
-        from_firestore(client)
-    if args.verify:
-        verify(client)
+    from google.api_core import exceptions as gexc
+
+    client = _client(as_user=args.as_user)
+    try:
+        if args.create:
+            create(client)
+        if args.from_file:
+            from_file(client, args.from_file)
+        if args.from_firestore:
+            from_firestore(client)
+        if args.verify:
+            verify(client)
+    except (gexc.Forbidden, gexc.PermissionDenied) as exc:
+        _explain_permission_error(exc)
 
 
 if __name__ == "__main__":

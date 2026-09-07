@@ -750,7 +750,47 @@ Check it:
 cd backend && python -m scripts.load_bigquery --verify
 ```
 
-### 13A.4 Grant the service account access
+### 13A.4 Who runs the load, and who serves the queries
+
+These are two different identities, and conflating them is the first thing
+that goes wrong.
+
+`config.py` calls `load_dotenv()`, so `GOOGLE_APPLICATION_CREDENTIALS` from
+`backend/.env` lands in the environment and **the loader authenticates as the
+runtime service account by default** — not as the person who typed the
+command. That account holds Firestore and Cloud Storage roles and no BigQuery
+ones, so the load fails with:
+
+```
+403 Access Denied: User does not have bigquery.datasets.create permission
+```
+
+which reads as though *you* lack permission. You do not; the service account
+does. `load_bigquery.py` catches this and prints both fixes.
+
+**Preferred — run the load as yourself.** Creating and loading a table is a
+one-off administrative act, and nothing in the request path should be able to
+write here:
+
+```bash
+gcloud auth application-default login
+```
+
+```bash
+cd backend && python -m scripts.load_bigquery --as-user --create --from-firestore --verify
+```
+
+`--as-user` drops `GOOGLE_APPLICATION_CREDENTIALS` for that run so google-auth
+falls back to your gcloud credentials.
+
+**Alternative — grant the service account write access.** Fewer steps, but the
+serving account can then write to the analytics table:
+
+```bash
+gcloud projects add-iam-policy-binding $PROJECT_ID   --member="serviceAccount:$SA" --role="roles/bigquery.dataEditor"
+```
+
+### 13A.4b Grant the service account read access
 
 ```bash
 gcloud projects add-iam-policy-binding $PROJECT_ID   --member="serviceAccount:$SA" --role="roles/bigquery.dataViewer"
@@ -762,7 +802,9 @@ gcloud projects add-iam-policy-binding $PROJECT_ID   --member="serviceAccount:$S
 
 `dataViewer` reads the table; `jobUser` runs the query. Read-only on purpose —
 nothing in the serving path writes to BigQuery, only `load_bigquery.py` does,
-and you run that yourself.
+and you run that yourself with `--as-user`. Both roles are still required even
+if you took the `dataEditor` route above, because `dataEditor` does not include
+the ability to run query jobs.
 
 ### 13A.5 Switch the engine on
 
