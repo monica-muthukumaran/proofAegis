@@ -59,6 +59,50 @@ def initialize_firebase():
     firebase_admin.initialize_app(cred)
 
 
+def purge_portfolio(db, dry_run: bool = True) -> int:
+    """Delete the previously seeded synthetic portfolio.
+
+    WHY THIS IS NEEDED, AND WHY A PLAIN RESEED IS NOT ENOUGH
+
+    `seed_portfolio` writes each case to `document(exception_id).set(...)`, so
+    it OVERWRITES by id rather than appending. That is safe but not sufficient:
+    the generator's ids are deterministic and derived from the record index, so
+    seeding a 320-case portfolio over a previously seeded 420-case one
+    overwrites the first 320 and leaves 100 orphans. Those orphans came from an
+    older generator run and skew every rate on the analytics screens while
+    looking entirely legitimate.
+
+    The real symptom this was written for: a live workspace whose portfolio
+    predated four of the five cross-case exception types, so `duplicate_invoice`
+    was the only cross-case finding anywhere in the product. The differentiator
+    had no on-screen evidence, and nothing said so.
+
+    Only records stamped `origin == "synthetic_portfolio"` are touched. Hero
+    seed cases and anything uploaded through the app are left alone — this
+    removes generated data, never a user's.
+    """
+    query = (db.collection("invoice_exceptions")
+             .where("origin", "==", "synthetic_portfolio"))
+    doc_ids = [doc.id for doc in query.stream()]
+
+    if dry_run:
+        print(f"  would delete {len(doc_ids)} portfolio records "
+              f"(origin='synthetic_portfolio')")
+        print("  drop --dry-run to actually delete them")
+        return 0
+
+    deleted = 0
+    for start in range(0, len(doc_ids), BATCH_SIZE):
+        chunk = doc_ids[start:start + BATCH_SIZE]
+        batch = db.batch()
+        for doc_id in chunk:
+            batch.delete(db.collection("invoice_exceptions").document(doc_id))
+        batch.commit()
+        deleted += len(chunk)
+        print(f"  Deleted {deleted}/{len(doc_ids)} stale portfolio records")
+    return deleted
+
+
 def seed_portfolio(db) -> int:
     """Writes the bulk synthetic portfolio from scripts/generate_synthetic_data.py.
 
@@ -98,11 +142,27 @@ def main():
         "--portfolio-only", action="store_true",
         help="Seed ONLY the portfolio, leaving the three hero cases untouched.",
     )
+    parser.add_argument(
+        "--purge-portfolio", action="store_true",
+        help="DELETE every record stamped origin='synthetic_portfolio' before "
+             "seeding. Needed when the new portfolio is smaller than the one "
+             "already there, or when older records predate current exception "
+             "types. Combine with --dry-run first.",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="With --purge-portfolio, report what would be deleted and stop.",
+    )
     args = parser.parse_args()
 
     initialize_firebase()
     db = firestore.client()
     now = datetime.now(timezone.utc)
+
+    if args.purge_portfolio:
+        purge_portfolio(db, dry_run=args.dry_run)
+        if args.dry_run:
+            return
 
     if args.portfolio_only:
         count = seed_portfolio(db)

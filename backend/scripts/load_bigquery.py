@@ -156,9 +156,26 @@ def _load(client, cases: list[dict], source: str) -> None:
 
 
 def from_file(client, path: str) -> None:
+    """Load a generated portfolio file.
+
+    `generate_synthetic_data.py` writes `{"cases": [...]}`, not a bare list.
+    The earlier `list(data.values())` produced a list containing one list and
+    every row then failed on `.get`, so be explicit about the shape rather
+    than guessing at it.
+    """
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
-    cases = data if isinstance(data, list) else list(data.values())
+
+    if isinstance(data, dict):
+        cases = data.get("cases")
+        if cases is None:
+            sys.exit(f"{path}: expected a top-level 'cases' key, found: "
+                     f"{', '.join(sorted(data)) or '(empty object)'}")
+    else:
+        cases = data
+
+    if not isinstance(cases, list) or (cases and not isinstance(cases[0], dict)):
+        sys.exit(f"{path}: 'cases' must be a list of case objects.")
     _load(client, cases, path)
 
 
