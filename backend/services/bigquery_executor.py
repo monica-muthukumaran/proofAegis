@@ -164,29 +164,59 @@ def _cutoff(days: Optional[int]) -> Optional[datetime]:
     return datetime.now(timezone.utc) - timedelta(days=days)
 
 
+_PARAM_TYPES = {
+    "cutoff": "TIMESTAMP",
+    "months": "INT64",
+    "sla_days": "INT64",
+    "clean_type": "STRING",
+    "clean_match_score": "INT64",
+}
+
+
+def _is_collection(value) -> bool:
+    """Whether this parameter binds as an ARRAY rather than a scalar.
+
+    Spelled out rather than inlined as an isinstance tuple, because getting it
+    wrong is silent until it reaches live BigQuery. It was wrong: the original
+    check was `isinstance(value, (list, tuple, set))`, and **frozenset is not a
+    subclass of set**. OPEN_STATUSES is a plain set and bound correctly;
+    CROSS_CASE_TYPE_VALUES is a frozenset and was sent as a scalar, so three of
+    the five queries worked and cross_case_value died on the load with
+    "Object of type frozenset is not JSON serializable".
+
+    A string is a Collection and must never take the array branch.
+    """
+    from collections.abc import Collection  # noqa: PLC0415
+
+    return isinstance(value, Collection) and not isinstance(value, (str, bytes))
+
+
+def build_query_parameters(params: dict) -> list:
+    """Turn the executor's parameter dict into BigQuery parameter objects.
+
+    Separate from `_run` so it can be tested without a client: this is the
+    layer the DuckDB parity tests cannot reach, because they substitute
+    literals into the SQL themselves.
+    """
+    from google.cloud import bigquery  # noqa: PLC0415
+
+    out = []
+    for key, value in params.items():
+        if _is_collection(value):
+            out.append(bigquery.ArrayQueryParameter(key, "STRING", sorted(value)))
+        else:
+            out.append(bigquery.ScalarQueryParameter(
+                key, _PARAM_TYPES.get(key, "STRING"), value))
+    return out
+
+
 def _run(sql: str, params: dict) -> list[dict]:
     """Execute with named parameters. Never string-interpolate a value into
     SQL here — `days` arrives from a query string."""
     from google.cloud import bigquery  # noqa: PLC0415
 
-    types = {
-        "cutoff": "TIMESTAMP",
-        "months": "INT64",
-        "sla_days": "INT64",
-        "clean_type": "STRING",
-        "clean_match_score": "INT64",
-    }
-    query_params = []
-    for key, value in params.items():
-        if isinstance(value, (list, tuple, set)):
-            query_params.append(
-                bigquery.ArrayQueryParameter(key, "STRING", sorted(value)))
-        else:
-            query_params.append(
-                bigquery.ScalarQueryParameter(key, types.get(key, "STRING"), value))
-
-    job = _client().query(
-        sql, job_config=bigquery.QueryJobConfig(query_parameters=query_params))
+    job = _client().query(sql, job_config=bigquery.QueryJobConfig(
+        query_parameters=build_query_parameters(params)))
     return [dict(row) for row in job.result()]
 
 

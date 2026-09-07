@@ -466,3 +466,77 @@ def test_portfolio_type_breakdown_agrees(con, population, days):
         expected["exception_type_counts"]
     assert {r["exception_type"]: round(float(r["type_value"] or 0), 2) for r in rows} == \
         expected["exception_type_value"]
+
+
+# ---------------------------------------------------------------------------
+# Parameter binding — the layer the DuckDB tests above do not touch
+# ---------------------------------------------------------------------------
+def test_every_query_parameter_binds_to_a_real_bigquery_parameter():
+    """The gap the DuckDB parity tests leave open.
+
+    Those tests translate the SQL and substitute literals themselves, so they
+    never execute `_run` — and `_run` is where the parameters are built. A
+    real defect lived in exactly that gap: `CROSS_CASE_TYPE_VALUES` is a
+    FROZENSET, `isinstance(frozenset(), set)` is False, so it missed the
+    array branch and was sent as a scalar. Two of the five queries bound
+    correctly (OPEN_STATUSES is a plain set) and the third died against live
+    BigQuery with "Object of type frozenset is not JSON serializable".
+
+    This builds the parameters for every query the way `_run` does and asserts
+    each one is a type the client can actually serialise.
+    """
+    from google.cloud import bigquery
+
+    from schemas import CROSS_CASE_TYPE_VALUES
+
+    # A list, not a dict keyed on the SQL: three of the five queries open with
+    # the same `WITH scoped AS (SELECT * FROM ...` prefix, so keying on a
+    # truncated statement silently collapses five calls into three.
+    captured = []
+
+    def fake_run(sql, params):
+        captured.append((sql, params))
+        # No rows: every reader handles an empty result, and this test is
+        # about what goes IN to the query, not what comes back.
+        return []
+
+    import services.bigquery_executor as module
+    original = module._run
+    module._run = fake_run
+    try:
+        module.portfolio_summary(365)
+        module.vendor_risk(365, 10)
+        module.monthly_trend(12)
+        module.ageing(365)
+        module.cross_case_value(365)
+    finally:
+        module._run = original
+
+    assert len(captured) == 5, "not every query was exercised"
+
+    # Build them through the REAL builder, not a re-implementation of its type
+    # check. A test that repeats the classification it is meant to be testing
+    # passes just as happily with the bug reintroduced — the first version of
+    # this test did exactly that, and proved nothing.
+    for sql, params in captured:
+        built = bq.build_query_parameters(params)
+        assert len(built) == len(params)
+        for param in built:
+            value = params[param.name]
+            if bq._is_collection(value):
+                assert isinstance(param, bigquery.ArrayQueryParameter), \
+                    f"{sql[:40]!r}: {param.name} is a " \
+                    f"{type(value).__name__} but did not bind as an array"
+                assert param.values
+            else:
+                assert isinstance(param, bigquery.ScalarQueryParameter)
+                # The scalar branch must only ever receive things BigQuery can
+                # serialise. This is the assertion the frozenset defect failed.
+                assert isinstance(param.value, (str, int, float, datetime)) \
+                    or param.value is None, \
+                    f"{sql[:40]!r}: {param.name} is a " \
+                    f"{type(param.value).__name__}, which is not JSON serialisable"
+
+    # And the specific collection that broke, by identity of its type.
+    assert isinstance(CROSS_CASE_TYPE_VALUES, frozenset)
+    assert isinstance(analytics_service.OPEN_STATUSES, set)
