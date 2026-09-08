@@ -33,6 +33,17 @@ AGENT_REGISTRY = (
 )
 
 
+def _ai_routing() -> str:
+    """Which API the model calls actually go to.
+
+    A named function rather than an inline conditional so it can be tested
+    against a patched config without reloading the config module — reloading
+    re-runs load_dotenv(), which repopulates the very variable a test just
+    cleared, and rebinds a `config` object other modules already hold.
+    """
+    return "vertex" if config.GOOGLE_GENAI_USE_VERTEXAI else "developer_api"
+
+
 def _agent_status(live: bool) -> list[dict]:
     """One row per model-calling agent, for the UI's agent badge.
 
@@ -103,6 +114,23 @@ def get_mode():
         "extraction_model": config.GEMINI_MODEL,
         "reasoning_model": config.GEMINI_REASONING_MODEL,
         "agents": _agent_status(gemini_active),
+        # WHERE those model calls go, which is not derivable from the model
+        # name: "gemini-3.5-flash" is the same string on Vertex and on the AI
+        # Studio Developer API. The two differ in who authenticates (the
+        # runtime service account vs. GEMINI_API_KEY), which project is
+        # billed, and which IAM grant matters — and they are indistinguishable
+        # from the outside, because both answer 200 with identical output.
+        #
+        # Omitting this was a real gap: the agent badge could name every model
+        # and still not answer "is this Vertex?", which is the first thing
+        # anyone asks when the bill arrives.
+        "ai_routing": _ai_routing(),
+        # Only meaningful under Vertex, so null otherwise rather than echoing
+        # a location that governs nothing — the same rule storage_bucket
+        # follows above.
+        "vertex_location": (
+            config.GOOGLE_CLOUD_LOCATION or None
+        ) if config.GOOGLE_GENAI_USE_VERTEXAI else None,
         # Whether the cases on screen are the seeded synthetic corpus. False
         # in a real user's own workspace, where every case is one they
         # uploaded — the mode banner should stop saying "synthetic data" the

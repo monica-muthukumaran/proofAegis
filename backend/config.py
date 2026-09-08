@@ -80,6 +80,36 @@ class Config:
     GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
     GEMINI_REASONING_MODEL = os.environ.get("GEMINI_REASONING_MODEL", "gemini-3.5-flash")
 
+    # --- Which API the model calls actually go to ---
+    # These two are consumed by the google-genai SDK straight from the
+    # environment; nothing in this codebase passes them to anything. They are
+    # mirrored here anyway, because this file's contract is that it is the one
+    # place to check what a deploy is configured to do — and because the UI has
+    # to be able to REPORT the routing.
+    #
+    # It is the single most consequential setting in this file and the only one
+    # that fails silently in both directions:
+    #
+    #   true  -> Vertex AI. Authenticates as the runtime service account
+    #            (needs roles/aiplatform.user), bills the Cloud project.
+    #   false -> AI Studio Developer API. Authenticates with GEMINI_API_KEY,
+    #            bills a separate AI Studio prepay wallet.
+    #
+    # Both answer 200 and produce identical model output, so nothing in the
+    # product notices the difference. Publishing it through /api/settings/mode
+    # is what makes it checkable rather than a thing you have to go read a
+    # Cloud Run revision to discover.
+    #
+    # Default false to match the SDK's own default: if the variable is unset,
+    # google-genai uses the Developer API, and this must report what actually
+    # happens rather than what we would prefer.
+    GOOGLE_GENAI_USE_VERTEXAI = _bool_env("GOOGLE_GENAI_USE_VERTEXAI", False)
+    # Only meaningful under Vertex. `global` is deliberate — model availability
+    # is per region, and asia-south1 serves gemini-3.5-flash but 404s
+    # gemini-3.5-flash-lite, which would silently drop every extraction onto
+    # the deterministic parser.
+    GOOGLE_CLOUD_LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", "")
+
     # --- Analytics engine ---
     # "firestore" aggregates in Python over a full collection read; that is
     # correct at a few hundred cases and is what the test suite runs.

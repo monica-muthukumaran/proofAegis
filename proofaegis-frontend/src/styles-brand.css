@@ -465,3 +465,51 @@ tbody tr.row-clickable:hover{box-shadow:inset 3px 0 0 var(--brand)}
 /* A model that is named but not currently being called reads as reference
    information, not as a running process. */
 .agent-row-model.is-idle{color:var(--muted)}
+
+/* --- Where the model calls go ------------------------------------------
+   A separate chip from the model name, because they answer different
+   questions: the model name is WHAT ran, the routing is WHERE it ran and
+   therefore who is billed. Both are chrome — facts about the system, never
+   about a case — so neither reaches for the reserved rust even when the
+   answer is the one an operator did not want. */
+.agent-routing{
+  padding:1px 6px;
+  border-radius:4px;
+  font-size:.85em;
+  font-weight:700;
+  letter-spacing:.01em;
+  white-space:nowrap;
+  border:1px solid transparent;
+}
+.agent-routing.vertex{
+  background:color-mix(in srgb,var(--brand) 14%,transparent);
+  color:var(--brand);
+  border-color:color-mix(in srgb,var(--brand) 30%,transparent);
+}
+/* Deliberately the warning amber rather than the signal rust. Running on the
+   Developer API is a configuration worth noticing — a different wallet, a
+   different credential — but it is not a finding about anyone's invoice, and
+   rust in this product means exactly one thing. */
+.agent-routing.developer_api{
+  background:var(--warning-soft);
+  color:var(--warning);
+  border-color:color-mix(in srgb,var(--warning) 32%,transparent);
+}
+
+.agent-routing-row{
+  display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+  padding:9px 0;
+  border-bottom:1px solid var(--line);
+  margin-bottom:10px;
+}
+.agent-routing-label{
+  color:var(--muted);
+  font-size:var(--step--2);font-weight:700;
+  letter-spacing:var(--track-wide);text-transform:uppercase;
+  flex:none;
+}
+.agent-routing-value{
+  font-size:var(--step-0);font-weight:700;text-align:right;
+  display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;justify-content:flex-end;
+}
+.agent-routing-loc{font-size:var(--step--1);font-weight:400;color:var(--muted)}

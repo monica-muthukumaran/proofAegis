@@ -130,3 +130,67 @@ def test_status_rows_carry_everything_the_badge_renders():
         for field in ("key", "label", "model", "stage", "live"):
             assert field in row, f"agent row is missing '{field}': {row}"
         assert row["model"], f"agent '{row['key']}' has no model name to print"
+
+
+# ---------------------------------------------------------------------------
+# Routing disclosure — WHERE the calls go, not just which model
+# ---------------------------------------------------------------------------
+# The model name cannot answer this: "gemini-3.5-flash" is the same string on
+# Vertex and on the AI Studio Developer API. They differ in who authenticates
+# (the runtime service account vs. GEMINI_API_KEY) and which project is
+# billed, and they are indistinguishable from the outside because both answer
+# 200 with identical output. That makes it exactly the kind of fact this
+# endpoint exists to publish.
+
+def test_routing_reports_vertex_when_the_flag_is_on(monkeypatch):
+    from routes import settings as settings_module
+
+    monkeypatch.setattr(settings_module.config, "GOOGLE_GENAI_USE_VERTEXAI", True)
+    assert settings_module._ai_routing() == "vertex"
+
+
+def test_routing_reports_developer_api_when_the_flag_is_off(monkeypatch):
+    from routes import settings as settings_module
+
+    monkeypatch.setattr(settings_module.config, "GOOGLE_GENAI_USE_VERTEXAI", False)
+    assert settings_module._ai_routing() == "developer_api"
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("true", True), ("TRUE", True), ("1", True), ("yes", True), ("on", True),
+    ("false", False), ("0", False), ("no", False), ("", False), ("maybe", False),
+])
+def test_flag_parsing_matches_the_sdk_truthiness(monkeypatch, raw, expected):
+    """config._bool_env is what turns the environment string into the verdict."""
+    from config import _bool_env
+
+    monkeypatch.setenv("GOOGLE_GENAI_USE_VERTEXAI", raw)
+    assert _bool_env("GOOGLE_GENAI_USE_VERTEXAI", False) is expected
+
+
+def test_unset_flag_defaults_to_developer_api_not_vertex(monkeypatch):
+    """The default must match the SDK's default, not our preference.
+
+    google-genai uses the Developer API when GOOGLE_GENAI_USE_VERTEXAI is
+    unset. If this defaulted to "vertex" it would tell an operator their calls
+    bill the Cloud project when they are in fact draining an AI Studio wallet
+    — a confident, checkable falsehood, which is worse than saying nothing.
+
+    Asserted against _bool_env rather than a reloaded config, because
+    config.py runs load_dotenv() at import: on any machine with the flag in
+    backend/.env, a reload would quietly repopulate the variable this test
+    just cleared and the test would pass for the wrong reason.
+    """
+    from config import _bool_env
+
+    monkeypatch.delenv("GOOGLE_GENAI_USE_VERTEXAI", raising=False)
+    assert _bool_env("GOOGLE_GENAI_USE_VERTEXAI", False) is False
+
+
+def test_vertex_location_is_only_reported_under_vertex(monkeypatch):
+    """Echoing a location that governs nothing is the half-truth this
+    endpoint exists to avoid — same rule storage_bucket already follows."""
+    from routes import settings as settings_module
+
+    monkeypatch.setattr(settings_module.config, "GOOGLE_GENAI_USE_VERTEXAI", False)
+    assert settings_module._ai_routing() == "developer_api"

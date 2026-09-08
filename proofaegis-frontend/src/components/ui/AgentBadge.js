@@ -63,6 +63,18 @@ export function AgentBadge({ mode, demo = false, unreachable = false }) {
 
   const agents = (mode && Array.isArray(mode.agents)) ? mode.agents : [];
 
+  // Where the calls go. Not derivable from the model name — "gemini-3.5-flash"
+  // is the same string on Vertex and on the AI Studio Developer API — and the
+  // difference decides which project is billed and which credential
+  // authenticates. An older backend omits the field; that reads as "not
+  // stated" rather than as a default, because guessing here is exactly the
+  // kind of confident falsehood this panel exists to avoid.
+  const routing = mode && mode.ai_routing;
+  const ROUTING_LABEL = {
+    vertex: "Vertex AI",
+    developer_api: "AI Studio Developer API",
+  };
+
   // Three states, deliberately distinct. "Unknown" is not folded into "off":
   // a banner that reports a model as disabled when it simply could not ask is
   // making a claim it has not checked.
@@ -99,8 +111,12 @@ export function AgentBadge({ mode, demo = false, unreachable = false }) {
   const accessibleName = [
     LABEL[state],
     state === "live" && headlineModel ? headlineModel : null,
+    // The routing chip is visible text on the button, so it belongs in the
+    // accessible name for the same reason the label does — see the note above.
+    state === "live" && routing ? (routing === "vertex" ? "Vertex" : "AI Studio") : null,
     "—",
     explanation,
+    state === "live" && routing ? `Routed via ${ROUTING_LABEL[routing] || routing}.` : null,
   ].filter(Boolean).join(" ");
 
   return html`
@@ -118,6 +134,9 @@ export function AgentBadge({ mode, demo = false, unreachable = false }) {
         ${LABEL[state]}
         ${state === "live" && headlineModel
           ? html`<span class="mono agent-badge-model">${headlineModel}</span>`
+          : null}
+        ${state === "live" && routing
+          ? html`<span class=${`agent-routing ${routing}`}>${routing === "vertex" ? "Vertex" : "AI Studio"}</span>`
           : null}
         ${canExpand ? html`<${Icon} name="chevronDown" size=${12} className="agent-caret" />` : null}
       </button>
@@ -146,6 +165,25 @@ export function AgentBadge({ mode, demo = false, unreachable = false }) {
               The backend has not answered <span class="mono">/api/settings/mode</span>, so which
               model would run cannot be confirmed. Nothing here is being assumed.
             </p>
+          ` : null}
+
+          ${state === "live" ? html`
+            <div class="agent-routing-row">
+              <span class="agent-routing-label">Routed via</span>
+              <span class="agent-routing-value">
+                ${routing ? ROUTING_LABEL[routing] || routing : "not reported by this backend"}
+                ${routing === "vertex" && mode.vertex_location
+                  ? html`<span class="mono agent-routing-loc">${mode.vertex_location}</span>`
+                  : null}
+              </span>
+            </div>
+            ${routing ? html`
+              <p class="text-muted text-small agent-pop-note">
+                ${routing === "vertex"
+                  ? "Calls authenticate as the runtime service account and bill this Google Cloud project."
+                  : "Calls authenticate with GEMINI_API_KEY and bill a separate AI Studio wallet, not this Cloud project."}
+              </p>
+            ` : null}
           ` : null}
 
           ${agents.length ? html`
