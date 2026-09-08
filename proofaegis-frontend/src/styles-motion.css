@@ -1,0 +1,303 @@
+/* ==========================================================================
+   Motion
+   ==========================================================================
+   Loaded last. Everything here is presentational: no layout, no measurement,
+   and no state depends on an animation completing, so the reduced-motion
+   block at the bottom can switch all of it off without breaking a screen.
+
+   THE PROBLEM THIS REPLACES
+
+   styles.css put `animation:rise-in .34s both` directly on `.panel`. Two
+   consequences, both bad, both invisible until you use the app for a minute:
+
+     Every route change re-animated the entire page. `.panel` is on ~every
+     surface in the product, so moving from the queue to a case made eight
+     things fade up from nothing — which reads as a page LOAD, not as a
+     navigation, and made the app feel slower than the instant swap it
+     actually was.
+
+     Panels below the fold finished animating before they were ever seen. A
+     CSS animation starts at paint, not at visibility, so the entrance on the
+     bottom half of a long page was spent on an empty viewport.
+
+   Both are fixed the same way: entrance animation is opt-in via a class the
+   JS applies when an element actually enters the viewport (see
+   lib/useReveal.js), and the blanket rule on `.panel` is gone.
+
+   THE VOCABULARY
+
+   One easing curve for entrances (a decelerating cubic — fast out of the
+   gate, soft landing), one for exits, one spring-ish curve for things the
+   user directly manipulated. Durations sit on a three-step scale. Anything
+   that needs a value outside this set is usually a sign the motion is
+   decorating rather than explaining.
+   ========================================================================== */
+:root{
+  --ease-out:cubic-bezier(.22,1,.36,1);
+  --ease-in:cubic-bezier(.55,0,1,.45);
+  --ease-spring:cubic-bezier(.34,1.56,.64,1);
+  --ease-std:cubic-bezier(.4,0,.2,1);
+
+  --dur-1:.14s;   /* state change on something under the cursor */
+  --dur-2:.24s;   /* an element entering or leaving */
+  --dur-3:.42s;   /* a region of the page arriving */
+}
+
+/* ==========================================================================
+   Keyframes
+   ========================================================================== */
+@keyframes fade-in{from{opacity:0}to{opacity:1}}
+@keyframes fade-out{from{opacity:1}to{opacity:0}}
+@keyframes rise{from{opacity:0;transform:translate3d(0,10px,0)}to{opacity:1;transform:none}}
+@keyframes rise-sm{from{opacity:0;transform:translate3d(0,5px,0)}to{opacity:1;transform:none}}
+@keyframes slide-from-right{from{opacity:0;transform:translate3d(24px,0,0)}to{opacity:1;transform:none}}
+@keyframes slide-from-left{from{opacity:0;transform:translate3d(-24px,0,0)}to{opacity:1;transform:none}}
+@keyframes pop-in{from{opacity:0;transform:scale(.94) translate3d(0,8px,0)}to{opacity:1;transform:none}}
+@keyframes drawer-in{from{transform:translate3d(100%,0,0)}to{transform:none}}
+@keyframes scale-x-in{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes scale-y-in{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes shimmer{from{background-position:-160% 0}to{background-position:260% 0}}
+@keyframes pulse-ring{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--brand) 40%,transparent)}70%{box-shadow:0 0 0 10px transparent}100%{box-shadow:0 0 0 0 transparent}}
+@keyframes float-y{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+@keyframes trace-dash{to{stroke-dashoffset:-28}}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ==========================================================================
+   Reveal on entry
+   ==========================================================================
+   `.reveal` is the resting (hidden) state; `.is-in` is added by
+   IntersectionObserver when the element crosses into view. The observer sets
+   `--i` on each child of a group so a row of cards staggers without a
+   :nth-child rule per position.
+
+   If JS never runs, `.reveal` is never applied in the first place — the
+   markup ships visible and the class is added by the hook. Nothing is hidden
+   by CSS that JS is responsible for revealing, which is the failure mode
+   this pattern usually has. */
+.reveal{opacity:0;transform:translate3d(0,12px,0)}
+.reveal.is-in{
+  animation:rise var(--dur-3) var(--ease-out) both;
+  animation-delay:calc(var(--i,0) * 60ms);
+}
+.reveal-fade{opacity:0}
+.reveal-fade.is-in{
+  animation:fade-in var(--dur-3) var(--ease-out) both;
+  animation-delay:calc(var(--i,0) * 60ms);
+}
+
+/* The blanket entrance is retired. Kept as an explicit opt-in for the few
+   places that genuinely want one on mount regardless of scroll position. */
+.panel,.kpi-card{animation:none}
+.animate-in{animation:rise var(--dur-3) var(--ease-out) both;animation-delay:calc(var(--i,0) * 55ms)}
+
+/* ==========================================================================
+   Route transition
+   ==========================================================================
+   The view swapped with no transition at all, so a navigation was
+   indistinguishable from a re-render. This is a short cross-fade with a small
+   rise, keyed on the view name so React tears down and rebuilds the node —
+   which is what restarts the animation. Deliberately quick: a page transition
+   a user notices twice is a page transition that is too long. */
+.route-enter{animation:rise-sm var(--dur-2) var(--ease-out) both}
+
+/* Progressive enhancement for browsers that have the real thing. Same
+   duration, but the browser handles the crossfade between old and new. */
+@media (prefers-reduced-motion:no-preference){
+  @view-transition{navigation:auto}
+  ::view-transition-old(root){animation:fade-out var(--dur-2) var(--ease-in) both}
+  ::view-transition-new(root){animation:rise-sm var(--dur-2) var(--ease-out) both}
+}
+
+/* ==========================================================================
+   Overlays — the biggest gap in the original pass
+   ==========================================================================
+   `.palette` and `.doc-preview` had entrances. `.drawer`, `.modal-center`,
+   and every backdrop did not: they appeared instantly at full opacity, which
+   is the single most jarring moment in the app because it happens on top of
+   content the user is still looking at.
+   ========================================================================== */
+.overlay-backdrop{
+  animation:fade-in var(--dur-2) var(--ease-out) both;
+  backdrop-filter:blur(3px);
+  -webkit-backdrop-filter:blur(3px);
+}
+.modal-center{animation:pop-in var(--dur-2) var(--ease-out) both}
+.drawer{animation:drawer-in var(--dur-2) var(--ease-out) both}
+.palette{animation:pop-in var(--dur-2) var(--ease-out) both}
+.doc-preview{animation:pop-in var(--dur-2) var(--ease-out) both}
+.tour-backdrop{animation:fade-in var(--dur-2) var(--ease-out) both}
+.tour-card,.tour-center-card{animation:pop-in var(--dur-2) var(--ease-out) both}
+/* The highlight box tracks a moving target as the tour advances, so it
+   animates its POSITION rather than re-entering each step. */
+.tour-highlight-box{
+  transition:top var(--dur-3) var(--ease-out),left var(--dur-3) var(--ease-out),
+             width var(--dur-3) var(--ease-out),height var(--dur-3) var(--ease-out);
+}
+.tour-progress-fill{transition:width var(--dur-3) var(--ease-out)}
+
+/* ==========================================================================
+   Navigation and controls
+   ========================================================================== */
+/* The sidebar link had no transition whatsoever — hover state snapped. */
+.sidebar-link{
+  transition:background var(--dur-1) var(--ease-std),color var(--dur-1) var(--ease-std),
+             border-left-color var(--dur-2) var(--ease-out),padding-left var(--dur-2) var(--ease-out);
+}
+.sidebar-link:hover{padding-left:15px}
+.sidebar-link .icon{transition:transform var(--dur-2) var(--ease-spring)}
+.sidebar-link:hover .icon{transform:translateX(1px) scale(1.08)}
+.sidebar-link.active .icon{transform:none}
+
+/* Tabs: an indicator that slides between tabs instead of a border that
+   teleports. The underline is a pseudo-element scaled from the centre, so it
+   needs no measurement and no JS. */
+.tab-btn{position:relative;transition:color var(--dur-1) var(--ease-std)}
+.tab-btn::after{
+  content:"";position:absolute;left:0;right:0;bottom:-1px;height:3px;
+  background:var(--brand);border-radius:2px 2px 0 0;
+  transform:scaleX(0);transform-origin:center;
+  transition:transform var(--dur-2) var(--ease-out);
+}
+.tab-btn:hover::after{transform:scaleX(.45);background:var(--border-strong)}
+.tab-btn.active::after{transform:scaleX(1);background:var(--brand)}
+/* The old static border would now double the indicator. */
+.tab-btn,.tab-btn.active{border-bottom-color:transparent}
+
+/* Buttons. The original transitioned background at .15s and transform at
+   .08s, so on hover the lift arrived and the colour caught up afterwards —
+   subtle, but it reads as lag. One duration for both. */
+.btn{
+  transition:background var(--dur-1) var(--ease-std),border-color var(--dur-1) var(--ease-std),
+             color var(--dur-1) var(--ease-std),box-shadow var(--dur-1) var(--ease-std),
+             transform var(--dur-1) var(--ease-out);
+}
+.btn:hover:not(:disabled){transform:translateY(-1px)}
+.btn-primary:hover:not(:disabled){box-shadow:0 6px 16px rgba(26,31,36,.18)}
+.btn:active:not(:disabled){transform:translateY(0) scale(.985);transition-duration:.05s}
+.btn:disabled{transition:none}
+
+/* An icon inside a button that means "forward" should move forward. */
+.btn:hover:not(:disabled) .icon-shift{transform:translateX(3px)}
+.icon-shift{transition:transform var(--dur-2) var(--ease-spring)}
+
+/* Inputs get a ring that grows rather than appearing. */
+.input{transition:border-color var(--dur-1) var(--ease-std),box-shadow var(--dur-2) var(--ease-out),background var(--dur-1) var(--ease-std)}
+.input:focus{box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 18%,transparent);border-color:var(--brand)}
+
+/* Badges and chips settle in rather than blink in when a filter changes. */
+.badge{transition:background var(--dur-1) var(--ease-std),border-color var(--dur-1) var(--ease-std)}
+
+/* Rows. Kept fast — a table is scanned, and a slow row hover feels sticky. */
+tbody tr.row-clickable{transition:background var(--dur-1) var(--ease-std),box-shadow var(--dur-1) var(--ease-std)}
+
+/* Panels lift slightly when they are a link to somewhere. */
+.panel-interactive{
+  transition:transform var(--dur-2) var(--ease-out),box-shadow var(--dur-2) var(--ease-out),border-color var(--dur-1) var(--ease-std);
+  cursor:pointer;
+}
+.panel-interactive:hover{
+  transform:translateY(-2px);
+  box-shadow:0 10px 26px rgba(26,31,36,.10);
+  border-color:var(--border-strong);
+}
+:root[data-theme="dark"] .panel-interactive:hover{box-shadow:0 10px 26px rgba(0,0,0,.44)}
+
+/* ==========================================================================
+   Loading
+   ==========================================================================
+   The skeleton pulsed opacity and then hard-swapped to content. A sweep reads
+   as "data is arriving" rather than "this box is blinking", and the paired
+   fade on the real content means the swap is a dissolve instead of a jump.
+   ========================================================================== */
+.skeleton{
+  background:linear-gradient(90deg,
+    var(--panel-elevated) 0%,
+    color-mix(in srgb,var(--panel-elevated) 55%,var(--surface)) 50%,
+    var(--panel-elevated) 100%);
+  background-size:220% 100%;
+  animation:shimmer 1.5s var(--ease-std) infinite;
+}
+.content-in{animation:fade-in var(--dur-3) var(--ease-out) both}
+
+.spinner{
+  width:1em;height:1em;flex:none;border-radius:50%;
+  border:2px solid color-mix(in srgb,currentColor 25%,transparent);
+  border-top-color:currentColor;
+  animation:spin .7s linear infinite;
+}
+
+/* ==========================================================================
+   Data visualisation
+   ========================================================================== */
+.bar-fill{transform-origin:left center;animation:scale-x-in .6s var(--ease-out) both;animation-delay:calc(var(--i,0) * 70ms)}
+.metric-bar-fill{transform-origin:left center;animation:scale-x-in .6s var(--ease-out) both}
+.chart-col{transform-origin:bottom;animation:scale-y-in .55s var(--ease-out) both;animation-delay:calc(var(--i,0) * 45ms)}
+.trend-line{stroke-dasharray:1400;stroke-dashoffset:1400;animation:draw 1.1s var(--ease-out) .15s forwards}
+.crosscase-bar>*{transform-origin:left center;animation:scale-x-in .7s var(--ease-out) both}
+
+/* Graph nodes: a hover that lifts, and edges that flow when a chain is
+   selected. The dash march is what makes a static diagram read as a path
+   being followed rather than four boxes and three lines. */
+.graph-node{transition:box-shadow var(--dur-2) var(--ease-out),border-color var(--dur-1) var(--ease-std),opacity var(--dur-2) var(--ease-std),transform var(--dur-2) var(--ease-spring)}
+.graph-node:hover{transform:translate(-50%,-50%) scale(1.045)}
+.graph-node.selected{transform:translate(-50%,-50%) scale(1.03)}
+.graph-edge{transition:stroke var(--dur-2) var(--ease-std),stroke-width var(--dur-2) var(--ease-std),opacity var(--dur-2) var(--ease-std)}
+.graph-edge.active{stroke-dasharray:6 8;animation:trace-dash .9s linear infinite}
+
+/* The KPI rail marks a card that needs attention. One pulse on arrival, not
+   a loop — a permanently pulsing element is an alarm, and most of these are
+   not alarms. */
+.kpi-exception .text-kpi{animation:rise var(--dur-3) var(--ease-out) both}
+
+/* ==========================================================================
+   Hero and spot art
+   ==========================================================================
+   The illustration assembles in the order the product works: documents
+   arrive, values are extracted, a rule is applied, a finding drops out. It
+   plays once, on load, and then holds. */
+.art-piece{animation:pop-in .55s var(--ease-out) both;animation-delay:calc(var(--i,0) * 110ms)}
+.art-path{
+  stroke-dasharray:var(--len,300);stroke-dashoffset:var(--len,300);
+  animation:draw .8s var(--ease-out) both;
+  animation-delay:calc(320ms + var(--i,0) * 110ms);
+}
+.art-float{animation:float-y 6s ease-in-out infinite;animation-delay:calc(var(--i,0) * 400ms)}
+.art-ping{animation:pulse-ring 2.4s var(--ease-out) infinite;animation-delay:1.4s}
+
+/* ==========================================================================
+   Reduced motion
+   ==========================================================================
+   The blanket kill from the original pass, extended to the transforms and
+   the infinite loops added above. Anything that only MOVES is removed;
+   anything that also carries state (a focus ring, a hover background) keeps
+   its colour change and loses only the animation.
+   ========================================================================== */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.001ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:.001ms!important;
+    scroll-behavior:auto!important;
+  }
+  .reveal,.reveal-fade{opacity:1;transform:none}
+  .btn:hover:not(:disabled),.btn:active:not(:disabled),
+  .graph-node:hover,.graph-node.selected,
+  .panel-interactive:hover,.sidebar-link:hover,
+  .page-thumb-btn:hover .page-thumb{transform:none}
+  .sidebar-link:hover{padding-left:12px}
+  .sidebar-link:hover .icon{transform:none}
+  .trend-line{stroke-dashoffset:0}
+  .art-path{stroke-dashoffset:0}
+  .graph-edge.active{stroke-dasharray:none}
+  .thumb-stack:hover::before{transform:rotate(-4deg) translate(-3px,2px)}
+  .thumb-stack:hover::after{transform:rotate(3deg) translate(3px,1px)}
+  @view-transition{navigation:none}
+}
+
+/* An SVG element's transform-origin defaults to the SVG's user-space origin,
+   not the element's own box — so a `scale()` in a keyframe swings a piece in
+   from the top-left corner of the whole canvas instead of growing in place.
+   `fill-box` makes the origin local, which is what every one of these
+   animations assumes. */
+.art-piece,.art-float,.page-thumb svg{transform-box:fill-box;transform-origin:50% 50%}

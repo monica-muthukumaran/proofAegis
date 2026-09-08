@@ -12,9 +12,20 @@ services:
         value: "false"
       - key: AUTH_REQUIRED
         value: "true"
+      # Add the actual Firebase Hosting URL here before the first live deploy.
       - key: ALLOWED_ORIGINS
         value: https://proofaegis.web.app
-      # Add the actual Firebase Hosting URL above before the first live deploy.
+      # Every signed-in user gets their own workspace and opens on an empty
+      # queue; the seeded corpus stays in demo-workspace and keeps calibrating
+      # the reasoning agent for everyone (backend/services/seed_context.py).
+      - key: PER_USER_WORKSPACES
+        value: "true"
+      # MUST equal the frontend's VITE_DEMO_EMAIL. That account is a real
+      # Firebase sign-in, so without it here the one-click demo button lands a
+      # reviewer in their own empty workspace instead of the seeded one — the
+      # single place an empty screen is the wrong answer.
+      - key: DEMO_ACCOUNT_EMAILS
+        sync: false
       # Render asks for all sync:false values in its Blueprint setup UI.
       # Keep their values out of this repository.
       - key: GEMINI_API_KEY

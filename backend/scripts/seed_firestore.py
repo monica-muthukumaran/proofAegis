@@ -26,6 +26,18 @@ PORTFOLIO_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "generate
 
 # Firestore caps a batch at 500 writes.
 BATCH_SIZE = 400
+
+# Which workspace the seeded corpus belongs to. Every case and every document
+# written by this script is stamped with it, and that stamp is now load-bearing
+# rather than cosmetic: the API filters by workspace_id, and Firestore's
+# `where("workspace_id", "==", ...)` does not match a document that lacks the
+# field. Seeded records without it would be written successfully and then be
+# invisible to every query — the worst kind of failure, because the seeding run
+# reports success.
+#
+# Read from the environment so a deployment that renamed DEFAULT_WORKSPACE_ID
+# seeds into the workspace its API actually reads.
+DEMO_WORKSPACE_ID = os.environ.get("DEFAULT_WORKSPACE_ID", "demo-workspace")
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # The API loads this automatically through config.py, but this standalone
 # script does not import config. Load the same backend/.env file explicitly.
@@ -124,8 +136,10 @@ def seed_portfolio(db) -> int:
         chunk = cases[start:start + BATCH_SIZE]
         batch = db.batch()
         for case in chunk:
+            record = dict(case)
+            record.setdefault("workspace_id", DEMO_WORKSPACE_ID)
             ref = db.collection("invoice_exceptions").document(case["exception_id"])
-            batch.set(ref, case)
+            batch.set(ref, record)
         batch.commit()
         written += len(chunk)
         print(f"  Seeded {written}/{len(cases)} portfolio records")
@@ -179,6 +193,7 @@ def main():
         record = {k: v for k, v in case.items() if k != "documents"}
         record["created_at"] = now.isoformat()
         record["updated_at"] = now.isoformat()
+        record.setdefault("workspace_id", DEMO_WORKSPACE_ID)
         # match_score / risk_level are placeholders here — matching_service.py
         # computes them for real at request time; this field is informational only.
         db.collection("invoice_exceptions").document(case["exception_id"]).set(record)
@@ -187,6 +202,11 @@ def main():
         for doc in case["documents"]:
             doc_record = dict(doc)
             doc_record["exception_id"] = case["exception_id"]
+            # Documents are queried by workspace too — the cross-case
+            # duplicate lookback in datastore.find_documents_by_type is a
+            # `documents` query, not an `invoice_exceptions` one.
+            doc_record.setdefault("workspace_id", DEMO_WORKSPACE_ID)
+            doc_record.setdefault("processing_state", "completed")
             db.collection("documents").document(doc["document_id"]).set(doc_record)
         print(f"  + {len(case['documents'])} document records")
 

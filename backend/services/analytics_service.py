@@ -54,6 +54,26 @@ AGE_BUCKETS = [
 SLA_BREACH_DAYS = 14
 
 
+def bucket_for_age(age_days: float) -> Optional[str]:
+    """The ageing bucket a case falls in, measured in WHOLE days open.
+
+    The buckets are labelled in whole days ("4-7 days") but were matched
+    against a fractional age, so every case landing between two bands — 3.5
+    days open, 7.2, 14.8, 30.4 — matched no bucket at all and vanished from
+    the chart while still being counted in `open_exceptions` above it. Four
+    days in every thirty-one fall into one of those gaps, so the bucket counts
+    routinely failed to sum to the total printed beside them.
+
+    Shared by both analytics engines so the boundaries and the rounding are
+    defined exactly once — see services/bigquery_executor.py.
+    """
+    days_open = int(age_days)
+    for label, low, high in AGE_BUCKETS:
+        if days_open >= low and (high is None or days_open <= high):
+            return label
+    return None
+
+
 def _parse(timestamp: Optional[str]) -> Optional[datetime]:
     """Tolerant ISO parse. A record with an unreadable date is excluded from
     time-based metrics rather than silently counted as 'now', which would
@@ -279,11 +299,10 @@ def ageing(cases: Iterable[dict], days: Optional[int] = 365) -> dict:
         impact = float(case.get("financial_impact") or 0)
         if age > SLA_BREACH_DAYS:
             breached += 1
-        for label, low, high in AGE_BUCKETS:
-            if age >= low and (high is None or age <= high):
-                buckets[label]["count"] += 1
-                buckets[label]["value_at_risk"] += impact
-                break
+        label = bucket_for_age(age)
+        if label is not None:
+            buckets[label]["count"] += 1
+            buckets[label]["value_at_risk"] += impact
 
     return {
         "sla_days": SLA_BREACH_DAYS,

@@ -381,13 +381,19 @@ def _select_related(candidates: list[dict], invoice_po_number, role: str) -> tup
 
 
 def build_matching_input(documents: list[dict], ds=None,
-                        exception_id: Optional[str] = None) -> tuple[Optional[dict], dict]:
+                        exception_id: Optional[str] = None,
+                        workspace_id: Optional[str] = None) -> tuple[Optional[dict], dict]:
     """
     Returns (matching_input, source_documents).
 
     matching_input is None when there is no usable vendor invoice — the one
     genuine blocker. source_documents maps each role to the document_id that
     supplied it, so every number in the evidence graph traces to a real file.
+
+    `workspace_id` bounds the cross-case lookback below. Passing None means
+    "look at every case in the store" — correct for the eval harness, which
+    owns its whole fixture set, and wrong for a request, which is why
+    run_analysis reads it off the case rather than leaving it to a default.
     """
     invoice_doc = _primary_by_type(documents, "vendor_invoice")
 
@@ -418,8 +424,19 @@ def build_matching_input(documents: list[dict], ds=None,
         "po_vendor_name": po.get("vendor_name") if po_doc else None,
         "po_number": po.get("po_number") if po_doc else None,
         "invoice_po_number": invoice.get("po_number"),
+        # What the goods receipt itself says it was delivered against. Read
+        # here rather than inferred from which document was selected: a
+        # receipt paired with the invoice on recency can still name a
+        # different order, and that is evidence the coherence check needs.
+        "receipt_po_number": grn.get("po_number") if grn_doc else None,
         "purchase_order_exists": po_doc is not None,
         "goods_receipt_exists": grn_doc is not None,
+        # How the counterpart documents were chosen. Carried into the matching
+        # input — not only into source_documents — because
+        # services/coherence_service.py treats an unconfirmed pairing as
+        # evidence, and a warning the matcher cannot see is a warning that
+        # only ever reaches a banner beside a finding it should have changed.
+        "link_warnings": link_warnings,
         "po_unit_price": po.get("unit_price") if po_doc else None,
         "invoice_unit_price": invoice.get("unit_price"),
         "po_quantity": po.get("quantity") if po_doc else None,
@@ -453,7 +470,8 @@ def build_matching_input(documents: list[dict], ds=None,
     # readiness preview before a case is saved).
     if ds is not None:
         prior_invoices = ds.find_documents_by_type("vendor_invoice",
-                                                    exclude_exception_id=exception_id)
+                                                    exclude_exception_id=exception_id,
+                                                    workspace_id=workspace_id)
         matching_input["duplicate_of"] = history_service.find_duplicate_invoices(
             invoice_doc, prior_invoices)
         matching_input["payment_detail_changes"] = history_service.find_payment_detail_changes(
@@ -707,7 +725,12 @@ def run_analysis(ds, exception_id: str) -> dict:
     state = readiness(documents)
 
     exception = ds.get_exception(exception_id) or {}
-    matching_input, source_documents = build_matching_input(documents, ds, exception_id)
+    # The lookback for duplicate/drift/cumulative-billing checks is bounded to
+    # the case's OWN workspace, read off the case rather than off the request:
+    # a re-analysis triggered by a background job has no request identity, and
+    # the answer must not depend on who happened to start it.
+    matching_input, source_documents = build_matching_input(
+        documents, ds, exception_id, workspace_id=exception.get("workspace_id"))
 
     if matching_input is None:
         # Nothing extractable to match on yet. Record readiness so the UI can
@@ -773,15 +796,67 @@ def run_analysis(ds, exception_id: str) -> dict:
     }
 
 
+# Where a case came from, and what each origin is allowed to record about
+# itself. `upload` is a person at the upload dialog; `email` is
+# services/email_intake.py, which knows the sender, subject and message id and
+# had every one of them silently discarded — an emailed case was stored
+# claiming it had been uploaded by hand, with no trace of which message
+# produced it. Provenance is the first thing an auditor asks for.
+_PROVENANCE_FIELDS = ("source_subject", "source_sender", "source_message_id")
+
+# A case title is a label a person chose, and the only thing the system does
+# with it is print it. It is never matched on, never compared, and never
+# reaches an agent prompt — the identity that drives every check remains the
+# extracted invoice number and purchase order reference, because those come
+# from the documents and this comes from whoever was typing.
+MAX_TITLE_LENGTH = 120
+
+
+def normalize_title(value) -> Optional[str]:
+    """Clean a user-supplied case title, or None if there is nothing left.
+
+    Control characters become SPACES rather than being deleted: a title is
+    rendered in a queue row, a page heading and an audit note, and a newline
+    or tab smuggled through one of those is a formatting bug at best. Deleting
+    them instead welded the words either side together — "Pipe
+dispute"
+    became "Pipedispute" — which is a different title, not a cleaned one.
+    Runs of whitespace then collapse to one, so " " and "" both mean "no
+    title" rather than becoming a case that looks unnamed but sorts oddly.
+
+    Over-long titles are truncated rather than rejected. Someone pasting a
+    whole invoice line into the name field wants a name, and refusing the
+    whole create call over it would lose the documents they were uploading.
+    """
+    if value is None:
+        return None
+    text = "".join(ch if ch.isprintable() else " " for ch in str(value))
+    text = " ".join(text.split())
+    if not text:
+        return None
+    return text[:MAX_TITLE_LENGTH].rstrip()
+
+
 def create_case(ds, workspace_id: str, actor: str, metadata: Optional[dict] = None) -> dict:
     """Creates an empty case. Documents are added afterwards, in any number
-    and any order."""
+    and any order.
+
+    Recognised metadata: an optional human `title`, the convenience labels
+    (invoice_id, vendor_name, purchase_order_id, business_unit, currency),
+    plus `source` and the
+    provenance fields an automated intake carries. Anything else is ignored —
+    every figure the app acts on comes from extraction, never from here.
+    """
     metadata = metadata or {}
     exception_id = new_exception_id()
     now = _now()
     case = {
         "exception_id": exception_id,
         "workspace_id": workspace_id,
+        # Optional, and None is a perfectly good value: a case with no title
+        # is displayed under its exception id exactly as before. Nothing in
+        # the product requires one.
+        "title": normalize_title(metadata.get("title")),
         "invoice_id": metadata.get("invoice_id"),
         "vendor_name": metadata.get("vendor_name"),
         "purchase_order_id": metadata.get("purchase_order_id"),
@@ -791,7 +866,7 @@ def create_case(ds, workspace_id: str, actor: str, metadata: Optional[dict] = No
         "po_amount": None,
         "status": "received",
         "processing_state": QUEUED,
-        "origin": "upload",
+        "origin": metadata.get("source") or "upload",
         "created_by": actor,
         "created_at": now,
         "updated_at": now,
@@ -799,6 +874,9 @@ def create_case(ds, workspace_id: str, actor: str, metadata: Optional[dict] = No
         "source_documents": {},
         "readiness": readiness([]),
     }
+    for field in _PROVENANCE_FIELDS:
+        if metadata.get(field):
+            case[field] = metadata[field]
     ds.create_exception(case)
     return case
 

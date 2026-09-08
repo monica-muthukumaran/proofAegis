@@ -5,7 +5,31 @@
 
 export const TOLERANCE = { price_variance_percent: 5, quantity_variance_percent: 2 };
 
-export const EXCEPTIONS = [
+// The STORED fields of each case — what a datastore actually holds. The
+// derived match summary (type, score, impact, risk, owner) is deliberately NOT
+// written here; it is computed below from MATCH_RESULTS, for the same reason
+// backend/services/case_service.py computes it on read rather than trusting a
+// stored copy.
+//
+// This split is the fix for a real defect. These rows used to be the whole of
+// EXCEPTIONS, and they were missing every derived field that the live
+// `/api/exceptions` response carries. The frontend was therefore written
+// against a contract the mock did not honour, and three things broke the
+// moment the app ran on mock data:
+//
+//   * Dashboard's "Recent exceptions" filters on `exception_type`, so with the
+//     field absent EVERY row was filtered out and the table rendered empty
+//     while the KPI above it said there were three open exceptions.
+//   * pickPriority ranks on `financial_impact`; with all of them undefined it
+//     fell through to the first row and the priority card showed a headline of
+//     "Exception" with em dashes for impact and match score.
+//   * The queue's risk rails key off `risk_level` and never appeared.
+//
+// Copying the numbers in by hand would have re-created exactly the drift the
+// backend comment at case_service.py:160 warns about (seed data once carried
+// hand-picked match scores of 72/78/60 that no code produced). So they are
+// derived, once, from the same MATCH_RESULTS the match workspace renders.
+const EXCEPTION_RECORDS = [
   {
     exception_id: "EXC-2026-0001",
     invoice_id: "INV-2026-1187",
@@ -16,6 +40,10 @@ export const EXCEPTIONS = [
     invoice_amount: 265000,
     po_amount: 240000,
     status: "exception_detected",
+    // "Recent exceptions" sorts on this. Without it the sort compared
+    // undefined against undefined and the ordering was whatever the array
+    // happened to be in.
+    created_at: "2026-07-02T14:42:00Z",
   },
   {
     exception_id: "EXC-2026-0002",
@@ -27,6 +55,7 @@ export const EXCEPTIONS = [
     invoice_amount: 315000,
     po_amount: 315000,
     status: "awaiting_receiving",
+    created_at: "2026-07-01T09:15:00Z",
   },
   {
     exception_id: "EXC-2026-0003",
@@ -38,6 +67,7 @@ export const EXCEPTIONS = [
     invoice_amount: 180000,
     po_amount: 180000,
     status: "awaiting_receiving",
+    created_at: "2026-06-29T16:08:00Z",
   },
 ];
 
@@ -104,6 +134,24 @@ export const MATCH_RESULTS = {
     ],
   },
 };
+
+// The list shape the real `/api/exceptions` returns: the stored record plus
+// the derived match summary. Mirrors case_service.summarize_exception() —
+// same five fields, same names, same source — so anything written against the
+// live contract works unchanged on mock data, which is the entire point of a
+// fixture.
+export const EXCEPTIONS = EXCEPTION_RECORDS.map((record) => {
+  const match = MATCH_RESULTS[record.exception_id];
+  if (!match) return record;
+  return {
+    ...record,
+    exception_type: match.exception_type,
+    match_score: match.match_score,
+    financial_impact: match.financial_impact,
+    risk_level: match.risk_level,
+    assigned_team: match.recommended_owner,
+  };
+});
 
 export const REASONING = {
   "EXC-2026-0001": {
@@ -209,10 +257,48 @@ export function buildAuditTrail(exceptionId) {
   return base;
 }
 
-export const DASHBOARD_SUMMARY = {
-  open_exceptions_count: 3,
-  value_on_hold: 255400,
-  average_match_score: 67,
-  awaiting_vendor_count: 0,
-  exception_type_breakdown: { price_variance: 1, quantity_variance: 1, missing_goods_receipt: 1 },
-};
+// Computed from the cases above rather than typed out, mirroring
+// backend/routes/dashboard.py. Hand-written totals are how a fixture starts
+// disagreeing with itself: this block previously omitted `clean_count`
+// entirely, so the Open-exceptions KPI rendered the literal string
+// "undefined invoices cleared" underneath it, and omitted
+// `exception_type_value`, so the breakdown chart had no money to scale by.
+//
+// Deriving them means the mock dashboard can never contradict the mock queue,
+// and adding a case above updates every figure here for free.
+const OPEN_STATUSES = new Set([
+  "exception_detected", "assigned", "awaiting_procurement",
+  "awaiting_receiving", "awaiting_vendor",
+]);
+
+export const DASHBOARD_SUMMARY = (() => {
+  // A cleared invoice is a case, and it belongs in the denominator of the
+  // average match score — but it is not an exception type and must stay out
+  // of the breakdown chart. Same rule as the backend.
+  const cleared = EXCEPTIONS.filter((e) => e.exception_type === "no_exception");
+  const scored = EXCEPTIONS.filter((e) => e.match_score != null);
+  const breakdown = {};
+  const value = {};
+  let valueOnHold = 0;
+
+  for (const e of EXCEPTIONS) {
+    if (!e.exception_type || e.exception_type === "no_exception") continue;
+    const impact = Number(e.financial_impact || 0);
+    breakdown[e.exception_type] = (breakdown[e.exception_type] || 0) + 1;
+    value[e.exception_type] = (value[e.exception_type] || 0) + impact;
+    if (OPEN_STATUSES.has(e.status)) valueOnHold += impact;
+  }
+
+  return {
+    invoice_count: EXCEPTIONS.length,
+    clean_count: cleared.length,
+    open_exceptions_count: EXCEPTIONS.filter((e) => OPEN_STATUSES.has(e.status)).length,
+    value_on_hold: Math.round(valueOnHold * 100) / 100,
+    average_match_score: scored.length
+      ? Math.round((scored.reduce((sum, e) => sum + e.match_score, 0) / scored.length) * 10) / 10
+      : 0,
+    awaiting_vendor_count: EXCEPTIONS.filter((e) => e.status === "awaiting_vendor").length,
+    exception_type_breakdown: breakdown,
+    exception_type_value: value,
+  };
+})();

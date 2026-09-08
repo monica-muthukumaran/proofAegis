@@ -35,6 +35,12 @@ function formatSize(bytes) {
 }
 
 export function CreateExceptionModal({ open, onClose, onOpenExisting }) {
+  // What the person wants to call this case. Optional, and left empty the
+  // case is displayed under its generated reference exactly as before —
+  // "EXC-2026-A3F81B04" is a fine primary key and a poor thing to say out
+  // loud in a stand-up, but nobody should be made to name a case before they
+  // have looked at the documents.
+  const [title, setTitle] = useState("");
   const [queue, setQueue] = useState([]);        // [{ file, documentType, id }]
   const [phase, setPhase] = useState("select");  // select | uploading | analyzing | done | error
   const [progress, setProgress] = useState(0);
@@ -48,7 +54,8 @@ export function CreateExceptionModal({ open, onClose, onOpenExisting }) {
 
   useEffect(() => {
     if (!open) {
-      setQueue([]); setPhase("select"); setProgress(0); setResult(null); setError(null);
+      setQueue([]); setPhase("select"); setProgress(0); setResult(null);
+      setError(null); setTitle("");
     }
   }, [open]);
 
@@ -80,7 +87,7 @@ export function CreateExceptionModal({ open, onClose, onOpenExisting }) {
     // opening a second one — a case is meant to accumulate evidence.
     let exceptionId = result && result.exceptionId;
     if (!exceptionId) {
-      const created = await api.createException({});
+      const created = await api.createException(title.trim() ? { title: title.trim() } : {});
       if (created.source === "error") {
         setError(created.error);
         setPhase("error");
@@ -148,6 +155,20 @@ export function CreateExceptionModal({ open, onClose, onOpenExisting }) {
             documents a case can hold, and you can add more at any time. A missing purchase order or
             goods receipt is reported as a finding — not an upload error.
           </p>
+
+          <label class="stack gap-4">
+            <span class="text-small" style=${{ fontWeight: 600 }}>
+              Case name <span class="text-muted" style=${{ fontWeight: 400 }}>(optional)</span>
+            </span>
+            <input class="input" type="text" maxLength="120" value=${title}
+              placeholder="e.g. Q3 pipe delivery dispute — leave blank to use a reference"
+              disabled=${phase === "uploading"}
+              onInput=${(e) => setTitle(e.target.value)} />
+            <span class="text-muted text-small">
+              A label for you and your team. It is never used to match documents or classify
+              the exception — every figure still comes from the PDFs.
+            </span>
+          </label>
 
           <div
             class="panel-elevated stack gap-8"

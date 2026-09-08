@@ -7,6 +7,8 @@ import { Badge, Icon, EmptyState, Skeleton, ErrorState } from "../components/ui/
 import { ModeBanner } from "../components/ui/ModeBanner.js";
 import { MATCH_SCORE_HINT, VALUE_ON_HOLD_HINT } from "../lib/labels.js";
 import { FirstRunTourOffer } from "../components/ui/FirstRunTourOffer.js";
+import { PageThumb } from "../components/ui/PageThumb.js";
+import { useReveal } from "../lib/useReveal.js";
 
 function formatInr(n) {
   if (n == null) return "—";
@@ -45,6 +47,12 @@ export function Dashboard({ openException, onCreateException, onStartTour, navig
   const [activity, setActivity] = useState([]);
   const [error, setError] = useState(null);
   const [showEmpty, setShowEmpty] = useState(false);
+  // Replaces the blanket `animation` that used to sit on `.panel` — see
+  // styles-motion.css. Each rail staggers only when it is actually on screen.
+  // Both containers render only once data has arrived, so the reveal must
+  // re-run when it does — see the note on `deps` in useReveal.
+  const kpiRef = useReveal({ stagger: 55, deps: [exceptions, summary, showEmpty] });
+  const bodyRef = useReveal({ stagger: 70, deps: [exceptions, summary, showEmpty] });
 
   const load = async () => {
     setError(null);
@@ -109,7 +117,6 @@ export function Dashboard({ openException, onCreateException, onStartTour, navig
       ` : effectiveExceptions.length === 0 ? html`
         <div class="panel">
           <${EmptyState}
-            icon="inbox"
             title="Your workspace is ready"
             description="Upload an invoice, purchase order, and goods receipt to begin investigating an exception."
             action=${html`
@@ -120,7 +127,7 @@ export function Dashboard({ openException, onCreateException, onStartTour, navig
           />
         </div>
       ` : html`
-        <div class="kpi-grid" data-tour="dashboard-metrics">
+        <div class="kpi-grid" data-tour="dashboard-metrics" ref=${kpiRef}>
           <${MetricCard} icon="inbox" label="Open exceptions" value="—" raw=${summary ? summary.open_exceptions_count : null} format=${(n) => Math.round(n)} sublabel=${summary ? `${summary.clean_count} invoices cleared` : "Across current workspace"} />
           <${MetricCard} icon="graph" label="Value on hold" value="—" raw=${summary ? summary.value_on_hold : null} format=${formatInr} sublabel="Blocked pending review" hint=${VALUE_ON_HOLD_HINT} tone="exception" />
           <${MetricCard} icon="clock" label="Awaiting action" value="—" raw=${effectiveExceptions.filter((e) => e.status.startsWith("awaiting")).length} format=${(n) => Math.round(n)} sublabel="Procurement and Receiving" tone="warning" />
@@ -128,16 +135,29 @@ export function Dashboard({ openException, onCreateException, onStartTour, navig
         </div>
 
         <div class="row gap-24" style=${{ alignItems: "flex-start", flexWrap: "wrap" }}>
-          <div class="stack gap-24" style=${{ flex: "2 1 480px", minWidth: 320 }}>
+          <div class="stack gap-24" ref=${bodyRef} style=${{ flex: "2 1 480px", minWidth: 320 }}>
             ${priority ? html`
-              <div class="panel stack gap-16" style=${{ padding: 22, borderColor: "rgba(251,113,133,0.35)" }}>
+              <div class="panel stack gap-16" style=${{ padding: 22, borderColor: "color-mix(in srgb,var(--exception) 34%,transparent)" }}>
                 <div class="row" style=${{ justifyContent: "space-between" }}>
                   <${Badge} tone="exception">Priority exception<//>
                   <span class="text-muted text-small">${priority.status.replaceAll("_", " ")}</span>
                 </div>
-                <div class="stack gap-4">
-                  <h3 class="text-section-title">${headlineFor(priority)}</h3>
-                  <p class="text-secondary">${priority.invoice_id} · ${priority.vendor_name}</p>
+                <div class="row gap-16" style=${{ alignItems: "flex-start" }}>
+                  <!-- The pages this finding came from, shown rather than
+                       described. The rust rule marks the cited line. Clicking
+                       opens the case at its documents. -->
+                  <div class="row gap-4" style=${{ flex: "none" }}>
+                    <${PageThumb} kind="invoice" width=${46} flagAt=${0.46}
+                      onOpen=${() => openException(priority.exception_id)}
+                      alt=${`Open the invoice for ${priority.invoice_id}`} />
+                    <${PageThumb} kind="purchase_order" width=${46}
+                      onOpen=${() => openException(priority.exception_id)}
+                      alt=${`Open the purchase order for ${priority.invoice_id}`} />
+                  </div>
+                  <div class="stack gap-4" style=${{ minWidth: 0 }}>
+                    <h3 class="text-section-title">${headlineFor(priority)}</h3>
+                    <p class="text-secondary">${priority.invoice_id} · ${priority.vendor_name}</p>
+                  </div>
                 </div>
                 <div class="row gap-24" style=${{ flexWrap: "wrap" }}>
                   <div>
@@ -160,7 +180,7 @@ export function Dashboard({ openException, onCreateException, onStartTour, navig
                   </div>
                 </div>
                 <button class="btn btn-primary" style=${{ width: "fit-content" }} onClick=${() => openException(priority.exception_id)}>
-                  Review exception <${Icon} name="arrowRight" size=${15} />
+                  Review exception <${Icon} name="arrowRight" size=${15} className="icon-shift" />
                 </button>
               </div>
             ` : null}

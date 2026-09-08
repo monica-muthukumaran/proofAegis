@@ -1,6 +1,7 @@
 import { html, useState } from "../lib.js";
 import { useAuth } from "../services/AuthContext.js";
 import { Icon } from "../components/ui/primitives.js";
+import { Logo } from "../components/brand/Logo.js";
 
 export function LoginScreen({ onBackToTour, onSignedIn, onCreateAccount }) {
   const { signIn, continueAsDemo, resetPassword, loading, error, demoCredentials, demoAvailable, isFirebaseMode } = useAuth();
@@ -34,13 +35,10 @@ export function LoginScreen({ onBackToTour, onSignedIn, onCreateAccount }) {
   };
 
   return html`
-    <div class="centered-screen">
+    <div class="centered-screen ambient">
       <div class="panel stack gap-24" style=${{ width: 440, maxWidth: "94vw", padding: 32 }}>
         <div class="stack gap-8">
-          <div class="row gap-8" style=${{ color: "var(--accent)" }}>
-            <${Icon} name="shield" size=${18} />
-            <span class="text-small" style=${{ fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>ProofAegis</span>
-          </div>
+          <span class="brand-eyebrow"><${Logo} size=${18} id="auth" />ProofAegis</span>
           <h1 class="text-section-title" style=${{ fontSize: 24 }}>Sign in to your ProofAegis workspace</h1>
           <p class="text-secondary">Review blocked invoices, inspect source evidence, and manage resolution actions.</p>
         </div>

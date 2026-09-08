@@ -75,7 +75,13 @@ class FixtureDatastore:
         self._priors = fixture.prior_invoices
         self._tolerance = tolerance
 
-    def find_documents_by_type(self, document_type: str, exclude_exception_id=None) -> list[dict]:
+    def find_documents_by_type(self, document_type: str, exclude_exception_id=None,
+                                workspace_id=None) -> list[dict]:
+        """`workspace_id` is accepted and ignored: a fixture set is one
+        workspace by definition, and the eval owns all of it. Accepted rather
+        than omitted so this stays a faithful stand-in for the real
+        signature — a stub that drifts from the interface it doubles stops
+        testing the code that calls it."""
         if document_type != "vendor_invoice":
             return []
         return [d for d in self._priors if d.get("exception_id") != exclude_exception_id]

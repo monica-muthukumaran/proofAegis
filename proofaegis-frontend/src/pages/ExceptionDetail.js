@@ -37,6 +37,23 @@ export function ExceptionDetail({ exceptionId, onBack, forcedTab }) {
   const [trustCheck, setTrustCheck] = useState(null);
   const [error, setError] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [renamingTitle, setRenamingTitle] = useState(false);
+  const [draftTitle, setDraftTitle] = useState("");
+
+  // An empty box means "go back to showing the reference", which is a real
+  // thing to want after naming a case by mistake — so it sends null rather
+  // than refusing to save.
+  const saveTitle = async () => {
+    const next = draftTitle.trim() || null;
+    setRenamingTitle(false);
+    if (next === (exception.title || null)) return;
+    const saved = await api.renameException(exceptionId, next);
+    if (saved.source === "error") { setError(saved.error); return; }
+    setException((prev) => ({ ...prev, title: next }));
+    // The rename is an audit event, so the trail on screen is now stale.
+    const refreshed = await api.getAudit(exceptionId);
+    if (refreshed.source !== "error") setAuditEvents(refreshed.data);
+  };
 
   useEffect(() => { if (forcedTab) setTab(forcedTab); }, [forcedTab]);
 
@@ -126,8 +143,40 @@ export function ExceptionDetail({ exceptionId, onBack, forcedTab }) {
 
       <div class="row gap-16" style=${{ flexWrap: "wrap", justifyContent: "space-between" }}>
         <div class="stack gap-4">
-          <h1 class="text-page-title mono" style=${{ fontSize: 24 }}>${exception.exception_id}</h1>
+          ${renamingTitle
+            ? html`
+              <div class="row gap-8" style=${{ flexWrap: "wrap" }}>
+                <input class="input" type="text" maxLength="120" autoFocus
+                  value=${draftTitle} aria-label="Case name"
+                  placeholder="Name this case — leave blank to use its reference"
+                  onInput=${(e) => setDraftTitle(e.target.value)}
+                  onKeyDown=${(e) => {
+                    if (e.key === "Enter") saveTitle();
+                    if (e.key === "Escape") setRenamingTitle(false);
+                  }} />
+                <button class="btn btn-primary btn-sm" onClick=${saveTitle}>Save</button>
+                <button class="btn btn-ghost btn-sm" onClick=${() => setRenamingTitle(false)}>Cancel</button>
+              </div>
+            `
+            : html`
+              <div class="row gap-8" style=${{ alignItems: "baseline", flexWrap: "wrap" }}>
+                <h1 class="text-page-title ${exception.title ? "" : "mono"}" style=${{ fontSize: 24 }}>
+                  ${exception.title || exception.exception_id}
+                </h1>
+                <button class="btn btn-ghost btn-sm"
+                  aria-label=${exception.title ? "Rename this case" : "Name this case"}
+                  onClick=${() => { setDraftTitle(exception.title || ""); setRenamingTitle(true); }}>
+                  ${exception.title ? "Rename" : "Name this case"}
+                </button>
+              </div>
+            `}
           <p class="text-secondary">
+            ${/* The generated reference stays on screen once a title replaces it in
+                 the heading. It is what every other system and every audit event
+                 calls this case, so it must remain quotable. */
+              exception.title
+                ? html`<span class="id">${exception.exception_id}</span> · `
+                : null}
             <span class="id">${exception.invoice_id}</span> · ${exception.vendor_name}
           </p>
         </div>

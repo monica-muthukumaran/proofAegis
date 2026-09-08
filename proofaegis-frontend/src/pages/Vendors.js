@@ -49,6 +49,35 @@ function pct(v) {
   return v === null || v === undefined ? "—" : `${Math.round(v * 100)}%`;
 }
 
+// A stable colour per vendor, derived from the name rather than stored.
+//
+// Every vendor avatar was the same grey square, so a grid of twelve cards had
+// nothing to grab onto and scanning it meant reading twelve headings. A hue
+// per vendor makes the card findable on the second visit — the same vendor is
+// the same colour on every screen, forever, with no logo to host and no
+// request to make.
+//
+// The hues are IDENTITY, like the evidence graph's node colours: they are
+// deliberately not --brand (which is chrome) and never a status colour, so
+// nothing here can be mistaken for a risk signal. Saturation and lightness
+// are fixed and the hue is the only thing that varies, which keeps every
+// avatar at the same visual weight — a vendor does not become more important
+// because its name happened to hash to red.
+function vendorHue(name) {
+  let hash = 0;
+  for (let i = 0; i < (name || "").length; i += 1) {
+    hash = (hash * 31 + name.charCodeAt(i)) % 360;
+  }
+  // Skip the 20° band around the signal rust so an avatar never reads as an
+  // alert at a glance.
+  const h = hash >= 350 || hash <= 20 ? (hash + 40) % 360 : hash;
+  return {
+    "--avatar-bg": `oklch(94% 0.045 ${h})`,
+    "--avatar-fg": `oklch(44% 0.12 ${h})`,
+    "--avatar-line": `oklch(84% 0.06 ${h})`,
+  };
+}
+
 function VendorCard({ vendor, onViewExceptions }) {
   const recurring = Object.entries(vendor.recurring_types || {}).slice(0, 3);
   const initials = (vendor.vendor_name || "?")
@@ -61,7 +90,7 @@ function VendorCard({ vendor, onViewExceptions }) {
   return html`
     <article class="panel vendor-card stack gap-16">
       <div class="row gap-12" style=${{ alignItems: "flex-start" }}>
-        <div class="panel-elevated vendor-avatar">${initials}</div>
+        <div class="vendor-avatar" style=${vendorHue(vendor.vendor_name)} aria-hidden="true">${initials}</div>
         <div class="stack gap-2" style=${{ minWidth: 0, flex: 1 }}>
           <h3 class="text-section-title clamp-2" style=${{ margin: 0 }}>${dash(vendor.vendor_name)}</h3>
           <div class="text-muted text-small">

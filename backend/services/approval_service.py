@@ -33,7 +33,10 @@ workspace can set its own bands without a deploy:
 
 A user's role comes from their verified token's custom claims, so it cannot be
 set by the client. With no policy configured the behaviour is unchanged, which
-keeps the demo flow working: an absent policy is not an implicit denial.
+keeps the demo flow working: an absent policy is not an implicit denial. Both
+rules are opt-in at the WORKSPACE level and default-on within a policy — write
+`{"segregation_of_duties": false}` to configure a workspace that wants the
+bands without the second pair of eyes.
 """
 from __future__ import annotations
 
@@ -110,7 +113,21 @@ def check_approval(new_status: str, *, actor: str, actor_role: Optional[str],
     if new_status not in APPROVAL_STATUSES:
         return
 
-    policy = {**DEFAULT_POLICY, **(policy or {})}
+    # An unconfigured workspace is not an implicit denial. Segregation of
+    # duties needs a second reviewer to segregate the work TO, and a workspace
+    # that has configured no policy has no roles, no bands and — in the demo
+    # and single-user cases — no second person. Applying it there did not
+    # protect anything: every case is prepared by whoever is signed in, so
+    # every case became permanently unresolvable, with `resolved`, `closed`
+    # and `approved_with_exception` all answering 403 forever.
+    #
+    # The control is unchanged wherever a policy exists: `segregation_of_duties`
+    # still defaults to on INSIDE a configured policy, so a workspace that sets
+    # only approval bands still gets it.
+    if not policy:
+        return
+
+    policy = {**DEFAULT_POLICY, **policy}
 
     if policy.get("segregation_of_duties"):
         involved = participants(case, documents)

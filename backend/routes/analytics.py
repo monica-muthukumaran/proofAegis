@@ -20,7 +20,7 @@ import os
 
 from flask import Blueprint, jsonify, request
 
-from auth import require_auth
+from auth import current_workspace_id, require_auth
 from services import analytics_gateway, portfolio_agent, trust_ledger
 
 bp = Blueprint("analytics", __name__, url_prefix="/api/analytics")
@@ -51,14 +51,17 @@ def overview():
     renders several linked views of the same population, and fetching them
     separately would let them disagree if a case changed in between."""
     days = _window()
+    # One workspace id, read once and passed to all five, so the linked views
+    # on this screen cannot end up describing different populations.
+    ws = current_workspace_id()
     return jsonify({
-        "summary": analytics_gateway.portfolio_summary(days),
-        "vendor_risk": analytics_gateway.vendor_risk(days, limit=12),
-        "trend": analytics_gateway.monthly_trend(months=12),
-        "ageing": analytics_gateway.ageing(days),
+        "summary": analytics_gateway.portfolio_summary(days, workspace_id=ws),
+        "vendor_risk": analytics_gateway.vendor_risk(days, limit=12, workspace_id=ws),
+        "trend": analytics_gateway.monthly_trend(months=12, workspace_id=ws),
+        "ageing": analytics_gateway.ageing(days, workspace_id=ws),
         # The product's actual claim, measured on the same population as
         # everything above it: what a per-invoice check would not have found.
-        "cross_case": analytics_gateway.cross_case_value(days),
+        "cross_case": analytics_gateway.cross_case_value(days, workspace_id=ws),
         # How often the deterministic layer had to correct the model.
         "trust": trust_ledger.summarize(),
         # Which engine produced the figures above, so the screen can say so
@@ -75,7 +78,8 @@ def cross_case():
     Separate from /overview so the demo can open on this one figure without
     waiting for the vendor ranking and the trend series to aggregate.
     """
-    return jsonify(analytics_gateway.cross_case_value(_window()))
+    return jsonify(analytics_gateway.cross_case_value(
+        _window(), workspace_id=current_workspace_id()))
 
 
 @bp.get("/accuracy")
@@ -134,7 +138,9 @@ def vendor_risk():
         limit = int(request.args.get("limit", 25))
     except (TypeError, ValueError):
         limit = 25
-    return jsonify(analytics_gateway.vendor_risk(_window(), limit=min(limit, MAX_VENDOR_ROWS)))
+    return jsonify(analytics_gateway.vendor_risk(
+        _window(), limit=min(limit, MAX_VENDOR_ROWS),
+        workspace_id=current_workspace_id()))
 
 
 @bp.get("/trends")
@@ -144,13 +150,14 @@ def trends():
         months = int(request.args.get("months", 12))
     except (TypeError, ValueError):
         months = 12
-    return jsonify(analytics_gateway.monthly_trend(months=max(1, min(months, 24))))
+    return jsonify(analytics_gateway.monthly_trend(
+        months=max(1, min(months, 24)), workspace_id=current_workspace_id()))
 
 
 @bp.get("/ageing")
 @require_auth
 def ageing():
-    return jsonify(analytics_gateway.ageing(_window()))
+    return jsonify(analytics_gateway.ageing(_window(), workspace_id=current_workspace_id()))
 
 
 @bp.post("/ask")

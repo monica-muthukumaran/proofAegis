@@ -244,3 +244,32 @@ def test_a_genuine_pdf_attachment_is_accepted():
     attachments = E.extract_pdf_attachments(message)
     assert len(attachments) == 1
     assert attachments[0]["file_name"] == "invoice.pdf"
+
+
+def test_a_case_from_the_mailbox_records_where_it_came_from():
+    """routes/intake.py hands create_case the sender, subject and message id;
+    create_case read none of them and hard-coded origin="upload", so an
+    emailed case was stored claiming it had been keyed in by hand with no
+    trace of which message produced it."""
+    from datastore import get_datastore
+
+    case = I.create_case(get_datastore(), "demo-workspace", "email-intake", {
+        "source": "email",
+        "source_sender": "billing@sigmaengsol.com",
+        "source_subject": "Invoice INV-2026-1187",
+        "source_message_id": "<a1b2@sigmaengsol.com>",
+    })
+
+    assert case["origin"] == "email"
+    assert case["source_sender"] == "billing@sigmaengsol.com"
+    assert case["source_subject"] == "Invoice INV-2026-1187"
+    assert case["source_message_id"] == "<a1b2@sigmaengsol.com>"
+
+
+def test_a_hand_uploaded_case_is_still_recorded_as_an_upload():
+    from datastore import get_datastore
+
+    case = I.create_case(get_datastore(), "demo-workspace", "me@example.com",
+                         {"vendor_name": "Acme"})
+    assert case["origin"] == "upload"
+    assert "source_sender" not in case

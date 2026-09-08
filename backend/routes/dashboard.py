@@ -9,7 +9,7 @@ from collections import Counter, defaultdict
 
 from flask import Blueprint, jsonify
 
-from auth import require_auth
+from auth import current_workspace_id, require_auth
 from datastore import get_datastore
 from services import case_service
 
@@ -20,7 +20,10 @@ bp = Blueprint("dashboard", __name__, url_prefix="/api/dashboard")
 @require_auth
 def summary():
     ds = get_datastore()
-    exceptions = ds.list_exceptions()
+    # This workspace's cases only. A signed-in user with an empty workspace
+    # gets a dashboard of zeroes, which is the truthful answer and what the
+    # frontend's empty state is already built to render.
+    exceptions = ds.list_exceptions(current_workspace_id())
 
     open_statuses = {"exception_detected", "assigned", "awaiting_procurement",
                       "awaiting_receiving", "awaiting_vendor"}

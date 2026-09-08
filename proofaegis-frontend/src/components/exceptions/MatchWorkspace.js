@@ -21,7 +21,78 @@ function money(value) {
   return typeof value === "number" ? value.toLocaleString("en-IN") : value;
 }
 
+// Whether the documents on this case were established to describe the same
+// transaction — see backend/services/coherence_service.py.
+//
+// All three verdicts are rendered, including the good one. "These were checked
+// against each other and they match" is not filler: it is the fact that makes
+// every variance below it worth reading, and its absence is what let an
+// invoice for steel pipe be compared against an order for office chairs and
+// reported as a precise quantity variance.
+function coherencePanel(coherence, linkWarnings) {
+  // Older payloads (a cached result from before the check existed) carry no
+  // coherence object. Fall back to the link warnings rather than rendering
+  // nothing or, worse, an all-clear that was never computed.
+  if (!coherence) {
+    if (!linkWarnings.length) return null;
+    return html`
+      <div class="panel-elevated stack gap-4"
+        style=${{ padding: 16, borderLeft: "3px solid var(--warning)" }}>
+        <span style=${{ fontWeight: 700 }}>Check these documents belong together</span>
+        ${linkWarnings.map((w) => html`
+          <p class="text-muted text-small" key=${w.role}>${w.detail}</p>
+        `)}
+      </div>
+    `;
+  }
+
+  const signals = coherence.signals || [];
+
+  if (coherence.verdict === "contradicted") {
+    return html`
+      <div class="panel-elevated stack gap-8"
+        style=${{ padding: 16, borderLeft: "3px solid var(--critical, var(--exception))" }}>
+        <span style=${{ fontWeight: 700 }}>These documents describe different transactions</span>
+        ${signals.filter((sig) => sig.strength !== "soft").map((sig, i) => html`
+          <p class="text-small" key=${i} style=${{ margin: 0 }}>${sig.detail}</p>
+        `)}
+        <p class="text-muted text-small" style=${{ margin: 0 }}>
+          No comparison below is meaningful, so none of them is reported as a variance —
+          the figures are shown as each document states them. Check that the right purchase
+          order and goods receipt were uploaded for this invoice.
+        </p>
+      </div>
+    `;
+  }
+
+  if (coherence.verdict === "unverified") {
+    return html`
+      <div class="panel-elevated stack gap-4"
+        style=${{ padding: 16, borderLeft: "3px solid var(--warning)" }}>
+        <span style=${{ fontWeight: 700 }}>Check these documents belong together</span>
+        ${signals.map((sig, i) => html`
+          <p class="text-muted text-small" key=${i} style=${{ margin: 0 }}>${sig.detail}</p>
+        `)}
+        <p class="text-muted text-small" style=${{ margin: 0 }}>
+          Not enough to say they are unrelated, so the comparison below still stands — but it
+          rests on these documents belonging to one order.
+        </p>
+      </div>
+    `;
+  }
+
+  if (!coherence.checked) return null;
+
+  return html`
+    <div class="row gap-8" style=${{ alignItems: "center", flexWrap: "wrap" }}>
+      <${Badge} tone="verified">Documents cross-checked<//>
+      <span class="text-muted text-small">${coherence.summary}</span>
+    </div>
+  `;
+}
+
 export function MatchWorkspace({ matchResult, trustCheck, linkWarnings = [] }) {
+  const coherence = matchResult.coherence;
   const lines = matchResult.line_comparisons || [];
   const allDuplicates = matchResult.duplicate_of || [];
   // A recognised billing schedule is reported through the same channel as a
@@ -143,19 +214,7 @@ export function MatchWorkspace({ matchResult, trustCheck, linkWarnings = [] }) {
         </div>
       ` : null}
 
-      ${linkWarnings.length ? html`
-        <div class="panel-elevated stack gap-4"
-          style=${{ padding: 16, borderLeft: "3px solid var(--warning)" }}>
-          <span style=${{ fontWeight: 700 }}>Check these documents belong together</span>
-          ${linkWarnings.map((w) => html`
-            <p class="text-muted text-small" key=${w.role}>${w.detail}</p>
-          `)}
-          <p class="text-muted text-small">
-            Every number below was computed from the documents named above. If they describe
-            different orders, the comparison is not meaningful.
-          </p>
-        </div>
-      ` : null}
+      ${coherencePanel(coherence, linkWarnings)}
 
       <div class="row gap-16" style=${{ flexWrap: "wrap" }}>
         <div class="panel-elevated stack gap-4" style=${{ padding: 16, flex: "1 1 160px" }}>
@@ -186,11 +245,16 @@ export function MatchWorkspace({ matchResult, trustCheck, linkWarnings = [] }) {
         <div class="panel-elevated stack gap-4" style=${{ padding: 16 }}>
           <span style=${{ fontWeight: 700 }}>What is outstanding</span>
           <p class="text-secondary" style=${{ margin: 0 }}>${matchResult.outstanding}</p>
-          <p class="text-muted text-small" style=${{ margin: 0 }}>
-            A high match score and an open finding are not a contradiction: the score
-            measures whether the documents on file agree, and the finding is about a
-            document that is not on file.
-          </p>
+          ${/* Only when the score IS high. This note reconciles a high score with an
+               open finding, and printed unconditionally it appeared beneath a 0%
+               score explaining why a high one was not a contradiction. */ ""}
+          ${matchResult.match_score >= 80 ? html`
+            <p class="text-muted text-small" style=${{ margin: 0 }}>
+              A high match score and an open finding are not a contradiction: the score
+              measures whether the documents on file agree, and the finding is about a
+              document that is not on file.
+            </p>
+          ` : null}
         </div>
       ` : null}
 
@@ -208,8 +272,15 @@ export function MatchWorkspace({ matchResult, trustCheck, linkWarnings = [] }) {
             ${matchResult.comparisons.map((c) => html`
               <tr key=${c.field} class=${c.classification === "outside_tolerance" ? "row-breach" : ""}>
                 <td style=${{ fontWeight: 600 }}>${FIELD_LABEL[c.field] || c.field}</td>
-                <td>${c.evaluable ? (c.expected_value ?? "—") : "Not on file"}</td>
-                <td>${c.evaluable ? (c.actual_value ?? "—") : "—"}</td>
+                ${/* "Not on file" is about a MISSING document, so it is keyed on the
+                     value being absent rather than on the row being non-evaluable.
+                     Those were the same thing until the coherence check started
+                     demoting rows whose documents are very much on file and simply
+                     not comparable — and this cell then hid both real figures behind
+                     "Not on file", which is the one thing a reviewer settling that
+                     case needs to see. */ ""}
+                <td>${c.expected_value ?? (c.evaluable ? "—" : "Not on file")}</td>
+                <td>${c.actual_value ?? "—"}</td>
                 <td>${c.percentage_variance != null ? `${c.percentage_variance}%` : "—"}</td>
                 <td>${c.tolerance_percent != null ? `${c.tolerance_percent}%` : "—"}</td>
                 <td><${Badge} tone=${CLASSIFICATION_TONE[c.classification] || "neutral"}>${c.classification.replaceAll("_", " ")}<//></td>

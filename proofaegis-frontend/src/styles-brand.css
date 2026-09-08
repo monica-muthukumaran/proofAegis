@@ -1,0 +1,467 @@
+/* ==========================================================================
+   Brand, type scale, and imagery
+   ==========================================================================
+   Loaded after theme-tokens.css and styles-color.css. Three jobs:
+
+     1. ONE brand hue, and a hard rule about where it may appear.
+     2. A type scale expressed as tokens instead of a hardcoded size per class.
+     3. The styling for the app's imagery layer — the mark, the hero, the
+        empty-state art, and the document page thumbnails.
+
+   WHY A BRAND HUE, GIVEN THE THEME ARGUED AGAINST ONE
+
+   theme-tokens.css makes a good argument: one accent doing two jobs — "this
+   is the primary action" and "look here" — spends a signal on something that
+   does not need one. It fixed that by making the primary action dark ink and
+   reserving rust for risk.
+
+   It left a gap. With the accent demoted to near-black, the product had no
+   colour of its own at all: warm greyscale plus one red. That reads as
+   restraint on a dense table and as anonymity on the front door, and it
+   forced one genuine contradiction — the focus ring was painted in the
+   RESERVED RISK COLOUR. A focused button beside a breached row put two rusts
+   on screen meaning two unrelated things, which is exactly the collision the
+   rest of the theme exists to prevent.
+
+   So --brand is added for identity and navigation only, and the reservation
+   that made the original theme work is kept intact and extended:
+
+     RUST IS STILL, AND ONLY, RISK.  Nothing below ever paints a badge, a
+     row, a chart series, a bar, an alert, or a status with --brand. If a
+     colour is reporting on the DATA, it comes from theme-tokens.css.
+
+     BRAND IS CHROME.  The mark, the focus ring, the active nav rail, links,
+     the command palette's selection, the tour progress bar, the hero art.
+     All of it is the application talking about ITSELF, never about a case.
+
+   That split is what lets both colours stay meaningful: a reviewer scanning
+   for red is still right every time, because red never appears in the
+   furniture.
+
+   The value was solved, not picked. #4338ca clears 4.5:1 as text against all
+   four light surfaces (worst case 7.18:1 on the elevated panel) and carries
+   white at 7.90:1 when used as a fill. Its dark-mode counterpart #a5b4fc
+   clears 7.14:1 worst case. It sits at 245°, 32° off the evidence graph's
+   document blue (213°) — and the two never share a screen region anyway,
+   since brand is chrome and the graph is data.
+   ========================================================================== */
+
+:root{
+  --brand:#4338ca;
+  --brand-strong:#3f37a4;
+  --brand-soft:#eef0fd;
+  --brand-line:#c9c6f2;
+  /* The hero and mark gradients. Two stops of the same hue family so the art
+     reads as one object lit from a corner, not as a rainbow. */
+  --brand-grad-a:#4338ca;
+  --brand-grad-b:#6d5fe0;
+  /* Ambient wash behind the entry hero. Alpha-based so it composites over
+     whatever --bg is, and stays a wash rather than a slab. */
+  --brand-wash:rgba(67,56,202,.10);
+  --brand-wash-2:rgba(184,72,55,.07);
+}
+
+:root[data-theme="dark"]{
+  --brand:#a5b4fc;
+  --brand-strong:#c7d2fe;
+  --brand-soft:rgba(165,180,252,.14);
+  --brand-line:rgba(165,180,252,.34);
+  --brand-grad-a:#8b8ff5;
+  --brand-grad-b:#b6a7f8;
+  --brand-wash:rgba(139,143,245,.14);
+  --brand-wash-2:rgba(230,119,98,.09);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --brand:#a5b4fc;
+    --brand-strong:#c7d2fe;
+    --brand-soft:rgba(165,180,252,.14);
+    --brand-line:rgba(165,180,252,.34);
+    --brand-grad-a:#8b8ff5;
+    --brand-grad-b:#b6a7f8;
+    --brand-wash:rgba(139,143,245,.14);
+    --brand-wash-2:rgba(230,119,98,.09);
+  }
+}
+
+/* ==========================================================================
+   Type scale
+   ==========================================================================
+   Sizes were hardcoded per class across three files, with no ratio between
+   them and letter-spacing declared three times at three different values
+   (-.025em, -.028em, -.04em). A scale is one decision; eleven literals are
+   eleven chances to drift.
+
+   The ratio is 1.2 (minor third) at the body end where density matters, and
+   opens up at the display end where it does not. Tracking is a FUNCTION of
+   size rather than a per-class opinion: large type needs negative tracking to
+   stop looking loose, small type needs slightly positive to stay readable.
+   ========================================================================== */
+:root{
+  --step--2:.75rem;     /* 12px — table headers, badges, chips */
+  --step--1:.8125rem;   /* 13px — dense metadata */
+  --step-0:.875rem;     /* 14px — table cells, controls */
+  --step-1:.9375rem;    /* 15px — secondary prose */
+  --step-2:1rem;        /* 16px — body */
+  --step-3:1.125rem;    /* 18px — section titles */
+  --step-4:1.375rem;    /* 22px — panel headings */
+  --step-5:clamp(1.5rem,2.2vw,1.875rem);   /* KPI figures */
+  --step-6:clamp(1.875rem,3.4vw,2.5rem);   /* page titles */
+  --step-7:clamp(2.25rem,5vw,3.5rem);      /* hero */
+
+  --track-tight:-.03em;
+  --track-snug:-.018em;
+  --track-normal:0;
+  --track-wide:.06em;
+
+  --leading-tight:1.1;
+  --leading-snug:1.28;
+  --leading-normal:1.5;
+}
+
+/* Restated so tracking has ONE source. */
+h1,h2,h3,h4{letter-spacing:var(--track-snug)}
+h1,h2{letter-spacing:var(--track-tight)}
+.text-page-title{font-size:var(--step-6);line-height:var(--leading-tight);letter-spacing:var(--track-tight);font-weight:700}
+.text-section-title{font-size:var(--step-3);line-height:var(--leading-snug);letter-spacing:var(--track-snug)}
+.text-secondary{font-size:var(--step-1)}
+.text-muted{font-size:var(--step-0)}
+.text-small{font-size:var(--step--1)}
+
+/* KPI figures, and the bug in them.
+   These run through useCountUp, which repaints the number every frame for
+   750ms. DM Sans ships proportional figures by default, so a 1 is narrower
+   than a 4 — meaning the KPI physically changed width on nearly every frame
+   and the whole card twitched while it counted. Tabular figures are the fix,
+   and they are the correct choice for a column of money regardless. */
+.text-kpi{
+  font-size:var(--step-5);
+  font-weight:700;
+  letter-spacing:var(--track-tight);
+  line-height:var(--leading-tight);
+  font-variant-numeric:tabular-nums;
+  /* The animated value is a live region that changes 45 times a second.
+     Announcing every frame would make a screen reader unusable; the final
+     figure is in the DOM and reachable, it just is not narrated mid-count. */
+  font-feature-settings:"tnum" 1;
+}
+/* Any figure a person compares down a column, not just the KPIs. */
+.text-kpi,.trust-cell-value,.crosscase-figure,.vendor-stats strong,td .num{
+  font-variant-numeric:tabular-nums;
+}
+
+/* ==========================================================================
+   Focus — moved off the risk colour
+   ==========================================================================
+   Was `2px solid var(--exception)`. See the note at the top of this file:
+   focus is the application describing itself, so it is brand. This also
+   restores rust to meaning exactly one thing.
+
+   Two rings rather than one: the brand ring reads on light surfaces, and the
+   outer white/dark halo keeps it visible when the focused control sits on a
+   tinted badge or a coloured graph node, where a single ring can vanish. */
+:where(button,a,input,select,textarea,[role="button"],[tabindex]):focus-visible{
+  outline:2px solid var(--brand);
+  outline-offset:2px;
+  border-radius:var(--radius-sm);
+  box-shadow:0 0 0 4px color-mix(in srgb,var(--brand) 22%,transparent);
+}
+
+/* ==========================================================================
+   Brand mark
+   ========================================================================== */
+.brand-mark{display:block;flex:none}
+.brand-lockup{display:flex;align-items:center;gap:10px;min-width:0}
+.brand-name{font-weight:700;letter-spacing:var(--track-snug);line-height:1.1}
+.brand-tag{color:var(--muted);font-size:var(--step--1);line-height:1.2}
+/* The eyebrow above a hero or a form title. */
+.brand-eyebrow{
+  display:inline-flex;align-items:center;gap:8px;
+  color:var(--brand);
+  font-size:var(--step--1);font-weight:700;
+  letter-spacing:var(--track-wide);text-transform:uppercase;
+}
+
+/* Active nav rail and links now carry brand rather than near-black, which is
+   what makes "where am I" legible at a glance instead of a weight change. */
+.sidebar-link.active{
+  background:var(--brand-soft);
+  border-left-color:var(--brand);
+  color:var(--brand);
+}
+.sidebar-link.active .icon{color:var(--brand)}
+.link-quiet,.text-button{color:var(--brand)}
+.palette-item.active{background:var(--brand-soft);box-shadow:inset 3px 0 0 var(--brand)}
+.tour-progress-fill{background:var(--brand)}
+.tab-btn.active{border-bottom-color:var(--brand)}
+tbody tr.row-clickable:hover{box-shadow:inset 3px 0 0 var(--brand)}
+.tour-highlight-box{
+  box-shadow:0 0 0 3px var(--brand),0 0 0 9px color-mix(in srgb,var(--brand) 24%,transparent);
+}
+
+/* ==========================================================================
+   Ambient surfaces
+   ==========================================================================
+   The decorative layer, kept to the places where nothing is being measured:
+   the entry screen, the sign-in card, and the top of the dashboard. It never
+   appears behind a table, a chart, or a case.
+   ========================================================================== */
+
+/* Two soft radial washes over the page ground. Fixed attachment so they do
+   not slide under scrolling content and turn into a moving background. */
+.ambient{position:relative;isolation:isolate}
+.ambient::before{
+  content:"";position:absolute;inset:-20% -10% auto -10%;height:min(620px,80vh);
+  z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(58% 46% at 22% 18%,var(--brand-wash) 0%,transparent 62%),
+    radial-gradient(48% 40% at 82% 8%,var(--brand-wash-2) 0%,transparent 60%);
+  /* The wash is atmosphere; on its own it can band on wide gradients. */
+  filter:saturate(115%);
+}
+
+/* A very fine grain, used only on the entry hero. It exists to stop a large
+   flat gradient from banding on 8-bit displays, which is a real artefact
+   rather than a stylistic tic — hence the low opacity and the fact that it is
+   applied nowhere else. Inline SVG so it costs no request. */
+.grain::after{
+  content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;
+  opacity:.28;mix-blend-mode:soft-light;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.86' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+}
+
+/* Glass, applied to exactly two things: the sticky topbar, which slides over
+   content and needs to stay legible while doing it, and overlay backdrops.
+   Not applied to panels — a frosted card over a page of numbers reduces
+   contrast for decoration, which is the wrong trade in an audit tool. */
+.topbar{
+  background:color-mix(in srgb,var(--surface) 82%,transparent);
+  backdrop-filter:saturate(180%) blur(14px);
+  -webkit-backdrop-filter:saturate(180%) blur(14px);
+}
+@supports not (backdrop-filter:blur(1px)){
+  .topbar{background:var(--surface)}
+}
+
+/* ==========================================================================
+   Hero art
+   ========================================================================== */
+.hero{position:relative;overflow:hidden;border-radius:var(--radius-lg)}
+.hero-grid{
+  display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);
+  gap:clamp(24px,4vw,56px);align-items:center;
+}
+@media(max-width:940px){
+  .hero-grid{grid-template-columns:1fr;gap:32px}
+  .hero-art{order:-1;max-width:460px;margin-inline:auto}
+}
+.hero-title{
+  font-size:var(--step-7);line-height:1.04;letter-spacing:var(--track-tight);
+  font-weight:700;text-wrap:balance;
+}
+.hero-sub{font-size:var(--step-2);color:var(--muted);max-width:52ch;line-height:1.55}
+.hero-art{width:100%;height:auto;display:block;overflow:visible}
+
+/* The art's own parts, animated in styles-motion.css. Colours live here so a
+   retheme moves the illustration with everything else. */
+.art-surface{fill:var(--surface)}
+.art-line{stroke:var(--line);stroke-width:1.5;fill:none}
+.art-ink{fill:var(--ink)}
+.art-muted{fill:var(--muted)}
+.art-brand{fill:var(--brand)}
+.art-brand-stroke{stroke:var(--brand);fill:none;stroke-width:1.8;stroke-linecap:round}
+.art-doc{fill:var(--viz-document)}
+.art-value{fill:var(--viz-value)}
+.art-rule{fill:var(--viz-rule)}
+.art-finding{fill:var(--exception)}
+.art-finding-stroke{stroke:var(--exception);fill:none;stroke-width:2;stroke-linecap:round}
+.art-shadow{fill:rgba(26,31,36,.06)}
+:root[data-theme="dark"] .art-shadow{fill:rgba(0,0,0,.32)}
+
+/* ==========================================================================
+   Document page thumbnails
+   ==========================================================================
+   The product's claim is that every finding traces to a page you can open.
+   Until now the only way to see that was to open a modal. A thumbnail puts
+   the page itself — its shape, its stamps, the line the finding sits on —
+   next to the finding, so the claim is visible before you click.
+
+   Drawn, not photographed: these are generated from the document's own
+   metadata (type, page count, the highlighted line's position), so a case
+   with no stored render still shows the right page shape rather than a
+   broken image. A real render, when one exists, replaces the drawing.
+   ========================================================================== */
+.page-thumb{
+  position:relative;flex:none;
+  border:1px solid var(--line);border-radius:6px;
+  background:var(--surface);overflow:hidden;
+  box-shadow:var(--shadow-panel);
+  transition:transform .22s cubic-bezier(.22,1,.36,1),box-shadow .22s ease,border-color .18s ease;
+}
+.page-thumb svg,.page-thumb img{display:block;width:100%;height:100%;object-fit:cover}
+.page-thumb-btn{padding:0;border:0;background:none;cursor:pointer;display:block}
+.page-thumb-btn:hover .page-thumb{
+  transform:translateY(-3px) rotate(-.6deg);
+  box-shadow:0 12px 28px rgba(26,31,36,.16);
+  border-color:var(--brand-line);
+}
+/* The rule the finding sits on, marked on the miniature. Rust, because this
+   one IS reporting on the data. */
+.page-thumb-flag{
+  position:absolute;left:0;right:0;height:3px;
+  background:var(--exception);
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--exception) 40%,transparent);
+}
+/* A small stack of pages, fanned. Used where a case has several documents. */
+.thumb-stack{position:relative;display:inline-block;flex:none}
+.thumb-stack .page-thumb{position:relative}
+.thumb-stack::before,.thumb-stack::after{
+  content:"";position:absolute;inset:0;
+  border:1px solid var(--line);border-radius:6px;background:var(--surface-soft);
+  transition:transform .24s cubic-bezier(.22,1,.36,1);
+}
+.thumb-stack::before{transform:rotate(-4deg) translate(-3px,2px);z-index:-2}
+.thumb-stack::after{transform:rotate(3deg) translate(3px,1px);z-index:-1}
+.thumb-stack:hover::before{transform:rotate(-8deg) translate(-7px,3px)}
+.thumb-stack:hover::after{transform:rotate(6deg) translate(7px,2px)}
+
+/* Vendor identity. Initials on a hue derived from the name, so the same
+   vendor is the same colour everywhere without storing a logo. Deliberately
+   NOT the brand hue and never a status hue — this is an identifier, like the
+   graph's categorical colours. */
+.vendor-avatar{
+  background:var(--avatar-bg,var(--panel-elevated));
+  color:var(--avatar-fg,var(--muted));
+  border:1px solid var(--avatar-line,var(--line));
+  letter-spacing:.02em;
+}
+
+/* ==========================================================================
+   Empty-state and illustration art
+   ========================================================================== */
+.spot-art{display:block;width:clamp(140px,34vw,196px);height:auto;margin-inline:auto}
+.spot-art .art-line{stroke-width:1.6}
+
+/* The vendor hue ramp is solved for a white card. On the dark surface the
+   same three values read as three glowing chips, so the lightness inverts:
+   a dim tinted ground with a bright label, which is how every other tinted
+   element in the dark theme behaves. Written twice for the same reason
+   theme-tokens.css writes its palette twice — the toggle scope is
+   unconditional, the system scope is gated, and plain CSS cannot share one
+   body between them. */
+:root[data-theme="dark"] .vendor-avatar{
+  background:color-mix(in srgb,var(--avatar-fg) 22%,var(--surface));
+  color:color-mix(in srgb,var(--avatar-bg) 88%,white);
+  border-color:color-mix(in srgb,var(--avatar-fg) 40%,transparent);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .vendor-avatar{
+    background:color-mix(in srgb,var(--avatar-fg) 22%,var(--surface));
+    color:color-mix(in srgb,var(--avatar-bg) 88%,white);
+    border-color:color-mix(in srgb,var(--avatar-fg) 40%,transparent);
+  }
+}
+
+/* ==========================================================================
+   Agent badge
+   ==========================================================================
+   Says whether a model is running and which one. It is a statement about the
+   SYSTEM, not about a case, so it lives in the chrome vocabulary: the live
+   state borrows the verified green that "API connected" beside it already
+   uses, and nothing here ever reaches for the reserved rust.
+   ========================================================================== */
+.agent-badge-wrap{position:relative;display:inline-flex}
+
+/* A <button> wearing .badge. The badge rules assume a span, so the button
+   chrome has to be reset before the tone classes read correctly. */
+.agent-badge{
+  appearance:none;
+  font:inherit;
+  font-size:var(--step--2);
+  font-weight:700;
+  cursor:pointer;
+  transition:border-color var(--dur-1) var(--ease-std),background var(--dur-1) var(--ease-std);
+}
+.agent-badge:disabled{cursor:default}
+.agent-badge:not(:disabled):hover{border-color:var(--border-strong)}
+.agent-badge-model{
+  font-size:.9em;
+  opacity:.85;
+  /* An identifier: never break "gemini-3.5-flash" across two lines. */
+  white-space:nowrap;
+}
+.agent-caret{opacity:.6;transition:transform var(--dur-2) var(--ease-out)}
+.agent-badge[aria-expanded="true"] .agent-caret{transform:rotate(180deg)}
+
+/* The state light. Three states, three treatments — and the live one is the
+   only thing in the product that pulses continuously, which is affordable
+   precisely because it is 7px and reports a live connection. */
+.agent-dot{
+  width:7px;height:7px;border-radius:50%;flex:none;
+  background:currentColor;
+}
+.agent-dot.live{
+  background:var(--success);
+  box-shadow:0 0 0 0 color-mix(in srgb,var(--success) 55%,transparent);
+  animation:agent-pulse 2.4s var(--ease-out) infinite;
+}
+.agent-dot.off{background:var(--muted);opacity:.55}
+.agent-dot.unknown{
+  background:transparent;
+  border:1.5px dashed var(--muted);
+  width:8px;height:8px;
+}
+@keyframes agent-pulse{
+  0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--success) 50%,transparent)}
+  70%{box-shadow:0 0 0 6px transparent}
+  100%{box-shadow:0 0 0 0 transparent}
+}
+@media (prefers-reduced-motion:reduce){
+  .agent-dot.live{animation:none;box-shadow:0 0 0 2px color-mix(in srgb,var(--success) 30%,transparent)}
+}
+
+/* --- The breakdown --- */
+.agent-pop{
+  position:absolute;top:calc(100% + 8px);left:0;z-index:40;
+  width:min(340px,calc(100vw - 32px));
+  padding:14px 16px;
+  background:var(--surface);
+  border:1px solid var(--border-strong);
+  border-radius:var(--radius-md);
+  box-shadow:var(--shadow-elevated);
+  animation:pop-in var(--dur-2) var(--ease-out) both;
+  white-space:normal;
+  text-align:left;
+}
+/* Near the right edge of a narrow viewport the popover would otherwise run
+   off screen; anchoring right is cheaper than measuring. */
+@media (max-width:560px){.agent-pop{left:auto;right:0}}
+
+.agent-pop-head{
+  display:flex;align-items:center;gap:8px;
+  padding-bottom:10px;margin-bottom:10px;
+  border-bottom:1px solid var(--line);
+  font-size:var(--step-0);
+}
+.agent-pop-note{margin-top:10px;line-height:1.45}
+.agent-pop-list{display:flex;flex-direction:column;gap:12px}
+.agent-stage-label{
+  color:var(--muted);
+  font-size:var(--step--2);font-weight:700;
+  letter-spacing:var(--track-wide);text-transform:uppercase;
+  margin-bottom:5px;
+}
+.agent-row{
+  display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+  padding:3px 0;
+}
+.agent-row-label{font-size:var(--step-0);min-width:0}
+.agent-row-model{
+  font-size:var(--step--1);
+  color:var(--ink);
+  white-space:nowrap;
+  flex:none;
+}
+/* A model that is named but not currently being called reads as reference
+   information, not as a running process. */
+.agent-row-model.is-idle{color:var(--muted)}

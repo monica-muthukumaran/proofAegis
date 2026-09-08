@@ -30,6 +30,34 @@ from schemas import (
     MatchClassification,
     MatchResult,
 )
+from services import coherence_service
+
+# Comparisons that read a field off ONE document and a field off ANOTHER.
+# When the documents turn out to describe different transactions these are the
+# rows whose numbers are meaningless, so they are demoted rather than reported
+# as variances — see _demote_cross_document_comparisons.
+_CROSS_DOCUMENT_FIELDS = {
+    # Vendor and PO number are on this list, and they are the two that look
+    # like they should not be. Both are genuine facts about the pair of
+    # documents, and both stay VISIBLE — demotion keeps the values and
+    # withdraws only the verdict. But once the documents are known to describe
+    # different orders, "the vendor matched" means the wrong purchase order
+    # happened to come from the same supplier, and counting that as agreement
+    # produced a 100% match score on a case whose headline was that nothing
+    # could be compared. With them demoted nothing is evaluable and the score
+    # is 0 — the same answer MISSING_PURCHASE_ORDER already gives for the same
+    # reason, an invoice with no valid counterpart to check against.
+    ComparisonField.VENDOR,
+    ComparisonField.PO_NUMBER,
+    ComparisonField.UNIT_PRICE,
+    ComparisonField.QUANTITY,
+    ComparisonField.LINE_ITEMS,
+    ComparisonField.SUBTOTAL,
+    ComparisonField.TAX,
+    ComparisonField.TOTAL,
+    ComparisonField.QUOTED_PRICE,
+    ComparisonField.PO_BILLED_TOTAL,
+}
 
 # Above this invoice value an unconfirmed delivery is high risk on size alone.
 # Overridable per workspace through the tolerance record's
@@ -43,18 +71,32 @@ MATCHED_CLASSIFICATIONS = {
 }
 
 
-def compute_variance(actual: float, expected: float) -> tuple[float, float]:
-    """Returns (absolute_variance, percentage_variance) per FR-006's formula."""
+def compute_variance(actual: float, expected: float) -> tuple[float, Optional[float]]:
+    """Returns (absolute_variance, percentage_variance) per FR-006's formula.
+
+    A percentage against a zero expected value is not a number, and it is
+    reported as absent rather than as a sentinel. It used to be float("inf"),
+    which classified correctly and then serialized into the API response as a
+    bare `Infinity` — not valid JSON. The browser's parse of the WHOLE match
+    result failed on it, so a single zero on a purchase order emptied the
+    entire match workspace rather than one cell of it.
+
+    The absolute variance carries the meaning instead, exactly as
+    trust_ledger.compare already does for a difference measured against zero.
+    """
     absolute_variance = actual - expected
     if expected == 0:
-        # Avoid a divide-by-zero; treat as fully unable-to-verify upstream.
-        percentage_variance = float("inf") if absolute_variance != 0 else 0.0
-    else:
-        percentage_variance = (absolute_variance / expected) * 100
-    return absolute_variance, percentage_variance
+        return absolute_variance, (0.0 if absolute_variance == 0 else None)
+    return absolute_variance, (absolute_variance / expected) * 100
 
 
-def classify_by_tolerance(percentage_variance: float, tolerance_percent: float) -> MatchClassification:
+def classify_by_tolerance(percentage_variance: Optional[float],
+                          tolerance_percent: float) -> MatchClassification:
+    # An absent percentage means the expected value was zero and the actual
+    # was not. There is no tolerance band around zero, so any difference from
+    # it is outside tolerance.
+    if percentage_variance is None:
+        return MatchClassification.OUTSIDE_TOLERANCE
     if abs(percentage_variance) == 0:
         return MatchClassification.MATCHED
     if abs(percentage_variance) <= tolerance_percent:
@@ -141,7 +183,7 @@ def compare_with_tolerance(field: ComparisonField, actual: Optional[float], expe
         expected_value=expected,
         actual_value=actual,
         absolute_variance=round(absolute_variance, 2),
-        percentage_variance=round(percentage_variance, 2),
+        percentage_variance=None if percentage_variance is None else round(percentage_variance, 2),
         tolerance_percent=tolerance_percent,
         classification=classification,
         evaluable=True,
@@ -175,6 +217,25 @@ def billable_quantity(scalar_quantity: Optional[float], line_items) -> Optional[
     quantity = (lines[0].get("quantity") if isinstance(lines[0], dict)
                 else getattr(lines[0], "quantity", None))
     return None if quantity is None else float(quantity)
+
+
+def implied_rate(case: dict, invoiced_quantity: Optional[float]) -> float:
+    """The per-unit rate to price unreceived units at.
+
+    Normally the invoice's own amount divided by the units it bills. An
+    invoice that bills ZERO units states no rate at all, and dividing by it
+    raised ZeroDivisionError — which the route layer turned into a 500 for the
+    whole case rather than a finding. The stated unit price is the fallback,
+    and an honest zero is the answer when the document gives neither.
+    """
+    amount = case.get("invoice_amount")
+    if invoiced_quantity and amount is not None:
+        return abs(float(amount) / float(invoiced_quantity))
+    for field in ("invoice_unit_price", "po_unit_price"):
+        stated = case.get(field)
+        if stated:
+            return abs(float(stated))
+    return 0.0
 
 
 def compute_match_score(comparisons: list[Comparison]) -> int:
@@ -289,7 +350,10 @@ def line_overcharge_total(line_comparisons: list[LineComparison]) -> float:
             continue
         if line.variance_amount is None or line.variance_amount <= 0:
             continue
-        quantity = line.invoice_quantity if line.invoice_quantity is not None else 1.0
+        # Clamped for the same reason the case-level quantities are: a hyphen
+        # beside a quantity parses as a minus sign, and a negative count would
+        # turn an overcharge into a credit against the other lines.
+        quantity = max(0.0, float(line.invoice_quantity)) if line.invoice_quantity is not None else 1.0
         total += line.variance_amount * quantity
     return round(total, 2)
 
@@ -399,7 +463,7 @@ def compare_tax_arithmetic(subtotal, tax, total, tolerance_percent: float) -> Op
         expected_value=expected,
         actual_value=round(float(total), 2),
         absolute_variance=round(absolute, 2),
-        percentage_variance=round(percentage, 2),
+        percentage_variance=None if percentage is None else round(percentage, 2),
         tolerance_percent=tolerance_percent,
         # Arithmetic on one page has no tolerance band in principle, but
         # rounding between systems is real; the configured price tolerance is
@@ -426,7 +490,7 @@ def compare_quoted_price(quotation_total, po_total, tolerance_percent: float) ->
         expected_value=round(float(quotation_total), 2),
         actual_value=round(float(po_total), 2),
         absolute_variance=round(absolute, 2),
-        percentage_variance=round(percentage, 2),
+        percentage_variance=None if percentage is None else round(percentage, 2),
         tolerance_percent=tolerance_percent,
         classification=classify_by_tolerance(percentage, tolerance_percent),
         evaluable=True,
@@ -461,7 +525,174 @@ def tax_basis(total, subtotal, tax, line_items) -> str:
     return "unknown"
 
 
+def _demote_cross_document_comparisons(comparisons: list[Comparison]) -> list[Comparison]:
+    """Re-mark every cross-document comparison as unable-to-verify.
+
+    Used only when the documents have been shown to describe different
+    transactions. Returning the comparisons untouched would leave the match
+    workspace displaying "unit price: expected 4,500, actual 2,400, OUTSIDE
+    TOLERANCE" — a precise variance between an office chair and a steel pipe,
+    which is the exact fabrication the coherence check exists to stop.
+
+    The figures are KEPT, because a reviewer settling this needs to see what
+    each document actually said. Only the verdict on them is withdrawn: the
+    values are real, the comparison between them is not.
+
+    Comparisons that read a single document against itself — the invoice's own
+    subtotal-plus-tax arithmetic — are left alone. They are still true.
+
+    Note there is NO `and comparison.evaluable` guard on the cross-document
+    branch, and that omission is deliberate. An earlier version skipped rows
+    that were already non-evaluable, on the reasoning that they had nothing
+    left to withdraw. They did: `po_billed_total` is built non-evaluable when
+    the two sides are on different tax bases, and it KEEPS its computed
+    percentage. So the table went on printing "Billed against this order —
+    variance 2844.44%" on a case whose headline was that nothing could be
+    compared. A stale number in a quiet column is still a fabricated number.
+    """
+    out = []
+    for comparison in comparisons:
+        if comparison.field not in _CROSS_DOCUMENT_FIELDS:
+            out.append(comparison)
+            continue
+        out.append(comparison.model_copy(update={
+            "classification": MatchClassification.UNABLE_TO_VERIFY,
+            "evaluable": False,
+            "absolute_variance": None,
+            "percentage_variance": None,
+        }))
+    return out
+
+
+# Findings that remain true even when the documents do not belong together,
+# and therefore outrank UNRELATED_DOCUMENTS.
+#
+# Every one of them is a statement about the INVOICE — checked against the
+# vendor's own history or against itself — so none of them borrowed a figure
+# from the purchase order that turned out to be the wrong one. An invoice that
+# is an exact copy of last month's is an exact copy whichever order sits
+# beside it, and telling the reviewer to check their uploads instead of
+# stopping the payment would be a worse answer, not a more precise one.
+#
+# Everything NOT on this list — price and quantity variance, missing goods
+# receipt, vendor mismatch, and no_exception — is a claim built by comparing
+# the invoice to the other documents, and is exactly what the coherence check
+# invalidates. no_exception is on that side of the line deliberately: "every
+# comparison passed, this invoice is payable" is the most dangerous sentence
+# in the product to say about two documents that describe different orders.
+_SURVIVES_INCOHERENCE = frozenset({
+    ExceptionType.MISSING_PURCHASE_ORDER,
+    ExceptionType.DUPLICATE_INVOICE,
+    ExceptionType.PAYMENT_DETAILS_CHANGED,
+    ExceptionType.PO_OVER_BILLED,
+    ExceptionType.RECURRING_SUSPECTED,
+    ExceptionType.VENDOR_PRICE_DRIFT,
+    ExceptionType.TAX_TOTAL_MISMATCH,
+})
+
+
 def evaluate_exception(case: dict, tolerance: dict) -> MatchResult:
+    """The public entry point: match the documents, then decide whether the
+    match was ever meaningful.
+
+    The coherence check is applied HERE rather than as another branch inside
+    the cascade below, and the difference matters. The cascade has fourteen
+    return statements; a check spliced into it would be one more branch that a
+    fifteenth could be added in front of by accident. Applied at the exit,
+    every result passes through it, and which findings outrank it is a set
+    somebody can read (`_SURVIVES_INCOHERENCE`) rather than an ordering they
+    have to reconstruct.
+    """
+    coherence = coherence_service.assess(case, case.get("link_warnings"))
+    result = _match_documents(case, tolerance)
+    result.coherence = coherence
+
+    if not coherence_service.is_contradicted(coherence):
+        return result
+
+    # Withdraw the cross-document arithmetic FIRST, and unconditionally.
+    #
+    # These are two separate questions and an earlier version ran them as one:
+    # "is this arithmetic trustworthy" and "which finding do we report". A
+    # duplicate invoice outranks an incoherence — it is true whichever order
+    # sits beside it — but that says nothing about the comparison table
+    # underneath, which is still measuring an invoice against the wrong
+    # order. So a duplicate finding was reported correctly above a panel
+    # reading "Billed against PO-2026-00733, over by 2,56,000" for an invoice
+    # citing PO-2026-00421.
+    result = _withdraw_cross_document_figures(result)
+
+    if result.exception_type in _SURVIVES_INCOHERENCE:
+        return result
+    return _unrelated_documents(result, case, coherence)
+
+
+def _withdraw_cross_document_figures(result: MatchResult) -> MatchResult:
+    """Strip every figure that was computed by comparing one document against
+    another, keeping the findings that did not depend on one.
+
+    Applied to EVERY contradicted case, whatever finding it ends up reporting.
+    """
+    demoted = _demote_cross_document_comparisons(result.comparisons)
+    return result.model_copy(update={
+        "comparisons": demoted,
+        # Scored over the cross-document rows only, all of which have just
+        # been demoted — so this is 0.
+        #
+        # Not `compute_match_score(demoted)`, which was the first attempt and
+        # returned 100. A match score is a statement about agreement BETWEEN
+        # documents, and the only evaluable row left after demotion is the
+        # invoice's own subtotal-plus-tax arithmetic. That row is still true,
+        # and it is not agreement with anything: an invoice that adds up,
+        # sitting beside an order for different goods, scored a perfect match
+        # on a case whose entire finding was that nothing could be compared.
+        #
+        # 0 is the same answer MISSING_PURCHASE_ORDER gives, for the same
+        # reason: an invoice with no valid counterpart is unchecked.
+        "match_score": compute_match_score(
+            [c for c in demoted if c.field in _CROSS_DOCUMENT_FIELDS]),
+        # `po_billing` answers "how much has been billed against this order in
+        # total", and it took its order value from the purchase order on file
+        # — the one that turns out not to be this invoice's.
+        "po_billing": None,
+        # Same argument, one level down: a per-line table pairing steel pipe
+        # against office chairs is a list of variances between things that
+        # were never comparable. What each document billed is on the Documents
+        # tab, where it is presented as extraction rather than as a comparison.
+        "line_comparisons": [],
+    })
+
+
+def _unrelated_documents(result: MatchResult, case: dict, coherence: dict) -> MatchResult:
+    """Replace a variance computed across unrelated documents with the fact
+    that they are unrelated.
+
+    The financial impact is the full invoice amount, and not because anything
+    was overcharged: nothing on this invoice has been verified against
+    anything, so all of it is unconfirmed. That is the same basis
+    MISSING_PURCHASE_ORDER uses, for the same reason — an invoice with no
+    valid counterpart is entirely unchecked, whether the counterpart is
+    absent or simply belongs to a different order.
+    """
+    evidence = [s["detail"] for s in coherence["signals"] if s["strength"] in ("hard", "context")]
+    return result.model_copy(update={
+        "exception_type": ExceptionType.UNRELATED_DOCUMENTS,
+        "financial_impact": float(case.get("invoice_amount") or 0),
+        "financial_impact_basis": (
+            "The full invoice amount, because nothing on it has been verified. The documents "
+            "on this case describe different transactions, so no comparison between them means "
+            "anything."
+        ),
+        "outstanding": " ".join(evidence) + (
+            " Check that the right purchase order and goods receipt were uploaded for this "
+            "invoice. Until they are, no variance on this case can be computed."
+        ),
+        "recommended_owner": "Accounts Payable",
+        "risk_level": "high",
+    })
+
+
+def _match_documents(case: dict, tolerance: dict) -> MatchResult:
     """
     case: normalized record with keys —
         vendor_name, po_vendor_name, po_number, invoice_po_number,
@@ -719,8 +950,14 @@ def evaluate_exception(case: dict, tolerance: dict) -> MatchResult:
     # order is a price or quantity variance, which the comparisons below
     # describe precisely; this branch exists for the case no single-invoice
     # check can see, where each one passes and the running total does not.
+    # `order_value` is formatted into both sentences below. cumulative_billing
+    # never returns the key empty, but a case record written by an older
+    # version can, and a missing order value there raised TypeError from an
+    # f-string — answering the whole case with a 500 instead of a finding.
     if (billing.get("is_over_billed") and billing.get("invoice_count", 1) > 1
-            and billing_comparable):
+            and billing_comparable and billing.get("order_value")
+            and billing.get("total_billed") is not None
+            and billing.get("over_billed_by") is not None):
         over = billing["over_billed_by"]
         return MatchResult(
             exception_type=ExceptionType.PO_OVER_BILLED,
@@ -816,8 +1053,14 @@ def evaluate_exception(case: dict, tolerance: dict) -> MatchResult:
         # document the scalar is absent and the comparison above was made
         # against the recovered line quantity. Using the raw field here would
         # raise a TypeError on exactly the cases the recovery exists for.
-        unreceived_units = invoiced_quantity - case["received_quantity"]
-        implied_unit_price = case["invoice_amount"] / invoiced_quantity
+        billed_beyond_receipt = invoiced_quantity - case["received_quantity"]
+        # Only units billed BEYOND what was received are money at risk. An
+        # invoice for FEWER units than were delivered is a variance worth
+        # reporting and nothing to hold, and booking it as a NEGATIVE impact
+        # let one under-billed invoice cancel out a genuine overcharge in
+        # every portfolio total that sums this field.
+        unreceived_units = max(0.0, billed_beyond_receipt)
+        implied_unit_price = implied_rate(case, invoiced_quantity)
         financial_impact = round(unreceived_units * implied_unit_price, 2)
         return MatchResult(
             exception_type=ExceptionType.QUANTITY_VARIANCE,
@@ -828,16 +1071,30 @@ def evaluate_exception(case: dict, tolerance: dict) -> MatchResult:
             financial_impact_basis=(
                 f"{unreceived_units:g} unreceived units x implied unit price "
                 f"({implied_unit_price:.2f}) = amount at risk pending receipt confirmation."
+                if unreceived_units else
+                f"{invoiced_quantity:g} unit(s) billed against "
+                f"{float(case['received_quantity']):g} received — the invoice is below the "
+                f"goods receipt, so nothing is at risk on it. Confirm the balance is not "
+                f"still to be billed."
             ),
             tolerance_source=tolerance_source,
             recommended_owner="Receiving",
-            risk_level="medium" if abs(qty_cmp.percentage_variance) < 25 else "high",
+            risk_level=(
+                "medium" if qty_cmp.percentage_variance is not None
+                and abs(qty_cmp.percentage_variance) < 25 else "high"
+            ),
         )
 
     # --- Price variance (Case A) ---
     if price_cmp.evaluable and price_cmp.classification == MatchClassification.OUTSIDE_TOLERANCE:
         variance_per_unit = abs(price_cmp.absolute_variance)
-        quantity = invoiced_quantity or 0
+        # A count of units cannot be negative. _to_number accepts a leading
+        # minus, so a hyphen sitting next to a quantity on a real layout parses
+        # as one — and multiplying a positive per-unit variance by it produced
+        # a NEGATIVE amount at risk, which then subtracted from the portfolio
+        # totals that sum this field. An unusable quantity yields no computable
+        # exposure, which is the honest answer, not a negative one.
+        quantity = max(0.0, float(invoiced_quantity or 0))
         financial_impact = round(variance_per_unit * quantity, 2)
         return MatchResult(
             exception_type=ExceptionType.PRICE_VARIANCE,
@@ -850,7 +1107,10 @@ def evaluate_exception(case: dict, tolerance: dict) -> MatchResult:
             ),
             tolerance_source=tolerance_source,
             recommended_owner="Procurement",
-            risk_level="high" if abs(price_cmp.percentage_variance) > 10 else "medium",
+            # An absent percentage means the order priced this at zero and the
+            # invoice did not. That is not a small variance.
+            risk_level=("high" if price_cmp.percentage_variance is None
+                        or abs(price_cmp.percentage_variance) > 10 else "medium"),
         )
 
     # --- Price variance found at LINE level (multi-line documents) ---
@@ -866,7 +1126,8 @@ def evaluate_exception(case: dict, tolerance: dict) -> MatchResult:
         )
         if lines_unmatched and financial_impact == 0:
             billed_only = [c for c in lines_unmatched if c.only_on == "invoice"]
-            financial_impact = round(sum(c.invoice_amount or 0 for c in billed_only), 2)
+            financial_impact = round(
+                sum(max(0.0, float(c.invoice_amount or 0)) for c in billed_only), 2)
             basis = (
                 f"{len(billed_only)} invoice line(s) have no matching purchase-order line; "
                 f"their billed amount is the exposure."

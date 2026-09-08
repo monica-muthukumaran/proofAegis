@@ -103,6 +103,24 @@ function messageFor(result) {
   if (result.timedOut) return "The server took too long to respond. Try again.";
   if (result.offline) return "Cannot reach the ProofAegis API. Check that the backend is running.";
   const detail = result.data && (result.data.detail || result.data.error);
+
+  // Auth failures take the curated wording even when the server sent its own.
+  // The server's 401 body is written for whoever is wiring up a client —
+  // "Missing Authorization header (expected 'Bearer <Firebase ID token>')" —
+  // and `detail ||` below put that string straight onto the Vendors and
+  // Analytics pages of anyone exploring the app without signing in. It names
+  // an HTTP header at a reviewer who has no account, which reads as a crash
+  // rather than as "this page needs a workspace".
+  //
+  // Only 401/403 are overridden. For 409 and 422 the server's message is
+  // genuinely the more specific one and still wins.
+  if (result.status === 401) {
+    return demoMode
+      ? "This view needs a signed-in workspace. The sample case in the tour does not include portfolio analytics."
+      : "Your session has expired. Sign in again.";
+  }
+  if (result.status === 403) return "You do not have access to this workspace.";
+
   const byStatus = {
     401: "Your session has expired. Sign in again.",
     403: "You do not have access to this workspace.",
@@ -356,6 +374,24 @@ export async function generateResolution(id) {
 
 export async function getAudit(id) {
   return resolve(await tryFetch(`/exceptions/${id}/audit`), () => mock.buildAuditTrail(id));
+}
+
+/**
+ * Sets or clears a case's title. Pass null to go back to displaying the
+ * generated reference.
+ *
+ * Separate from updateStatus because they are different kinds of change: a
+ * title is a label, it is checked by nothing, and renaming a case can never
+ * move it toward being paid.
+ */
+export async function renameException(id, title) {
+  return resolve(
+    await tryFetch(`/exceptions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    }),
+    () => ({ exception_id: id, title }),
+  );
 }
 
 export async function updateStatus(id, status, actor, note) {

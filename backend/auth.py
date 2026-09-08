@@ -87,23 +87,72 @@ def require_auth_strict(view):
     return wrapper
 
 
-def current_workspace_id() -> str:
-    """The workspace every Firestore query and Storage path is scoped to.
+def workspace_for_claims(claims: dict | None) -> str:
+    """Which workspace a set of verified token claims belongs to.
 
-    Single-workspace enforcement for now, and deliberately honest about it:
-    a verified token carrying a `workspace_id` custom claim wins, otherwise
-    everyone lands in config.DEFAULT_WORKSPACE_ID. That is not multi-tenant
-    isolation — any signed-in user still sees the same workspace's cases.
-    What it does buy is that storage paths and case records are scoped from
-    the first byte written, so turning on real per-tenant claims later is a
-    claims-and-rules change rather than a data migration.
+    Pure and separately testable, because getting this wrong is how one
+    person's invoices end up in another person's queue. The order is
+    deliberate:
+
+      1. An explicit `workspace_id` custom claim always wins. That is how a
+         real team shares one workspace, and how an admin puts somebody
+         somewhere specific.
+      2. No verified user at all -> the demo workspace. This is the
+         demo-auth/mock path, unchanged: no token has ever been sent, and the
+         seeded cases are exactly what should be on screen.
+      3. A designated demo account -> the demo workspace, even though it IS a
+         real signed-in Firebase user. Without this, the one-click demo login
+         the frontend ships would open on an empty queue, which is the one
+         place a reviewer must not meet one.
+      4. Anyone else -> `user:<uid>`, their own workspace, which starts empty.
+
+    Keyed on uid rather than email because an email address can be changed on
+    an account and a uid cannot; a workspace that moves when somebody edits
+    their profile is a workspace that loses its cases.
     """
-    user = getattr(g, "user", None)
-    if user:
-        claim = user.get("workspace_id") or user.get("workspaceId")
+    if claims:
+        claim = claims.get("workspace_id") or claims.get("workspaceId")
         if claim:
             return str(claim)
-    return config.DEFAULT_WORKSPACE_ID
+
+    if not claims or not config.PER_USER_WORKSPACES:
+        return config.DEFAULT_WORKSPACE_ID
+
+    email = str(claims.get("email") or "").strip().lower()
+    if email and email in config.DEMO_ACCOUNT_EMAILS:
+        return config.DEFAULT_WORKSPACE_ID
+
+    uid = claims.get("uid") or claims.get("user_id") or claims.get("sub")
+    if not uid:
+        # A verified token with no subject is not something to guess about,
+        # and dropping such a request into the shared demo workspace would be
+        # the worst available guess.
+        return config.DEFAULT_WORKSPACE_ID
+    return f"{config.USER_WORKSPACE_PREFIX}:{uid}"
+
+
+def current_workspace_id() -> str:
+    """The workspace every query, Storage path and case record is scoped to.
+
+    See workspace_for_claims for the rules. Storage paths were already
+    workspace-scoped from the first byte written, so turning this on files new
+    uploads correctly without a data migration.
+    """
+    return workspace_for_claims(getattr(g, "user", None))
+
+
+def is_demo_workspace(workspace_id: str) -> bool:
+    """Whether this workspace is the shared seeded one. Callers use it to
+    decide what to SAY on an empty screen, never to decide what to show."""
+    return workspace_id == config.DEFAULT_WORKSPACE_ID
+
+
+def current_user_uid() -> str | None:
+    user = getattr(g, "user", None)
+    if not user:
+        return None
+    uid = user.get("uid") or user.get("user_id") or user.get("sub")
+    return str(uid) if uid else None
 
 
 def current_user_role() -> str | None:

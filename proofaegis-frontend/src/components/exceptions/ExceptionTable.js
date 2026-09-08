@@ -68,7 +68,7 @@ export function ExceptionTable({ exceptions, onOpen, initialQuery = "" }) {
     if (query.trim()) {
       const q = query.trim().toLowerCase();
       rows = rows.filter((e) =>
-        [e.exception_id, e.invoice_id, e.vendor_name, e.purchase_order_id, e.exception_type]
+        [e.title, e.exception_id, e.invoice_id, e.vendor_name, e.purchase_order_id, e.exception_type]
           .some((field) => field && String(field).toLowerCase().includes(q))
       );
     }
@@ -119,7 +119,7 @@ export function ExceptionTable({ exceptions, onOpen, initialQuery = "" }) {
           <table>
             <thead>
               <tr>
-                ${th("exception_id", "ID")}
+                ${th("exception_id", "Case")}
                 ${th("invoice_id", "Invoice")}
                 ${th("vendor_name", "Vendor")}
                 ${th("exception_type", "Type")}
@@ -132,8 +132,20 @@ export function ExceptionTable({ exceptions, onOpen, initialQuery = "" }) {
             </thead>
             <tbody>
               ${filtered.map((e) => html`
-                <tr key=${e.exception_id} class="row-clickable ${e.risk_level ? `risk-${e.risk_level}` : ""}" role="link" tabIndex="0" aria-label=${`Open ${e.exception_id}`} onClick=${() => onOpen(e.exception_id)} onKeyDown=${(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(e.exception_id); } }}>
-                  <td><span class="id">${e.exception_id}</span></td>
+                <tr key=${e.exception_id} class="row-clickable ${e.risk_level ? `risk-${e.risk_level}` : ""}" role="link" tabIndex="0" aria-label=${`Open ${e.title || e.exception_id}`} onClick=${() => onOpen(e.exception_id)} onKeyDown=${(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(e.exception_id); } }}>
+                  ${/* A named case leads with its name and keeps the reference
+                       underneath: the reference is what every audit event and
+                       every other system calls it, so it stays quotable. An
+                       unnamed one is unchanged. */ ""}
+                  <td>
+                    ${e.title
+                      ? html`
+                        <div class="stack gap-2">
+                          <span style=${{ fontWeight: 600 }}>${e.title}</span>
+                          <span class="id text-muted text-small">${e.exception_id}</span>
+                        </div>`
+                      : html`<span class="id">${e.exception_id}</span>`}
+                  </td>
                   <td><span class="id">${dash(e.invoice_id)}</span></td>
                   <td class="clamp-2" style=${{ maxWidth: 190 }}>${dash(e.vendor_name)}</td>
                   <td>

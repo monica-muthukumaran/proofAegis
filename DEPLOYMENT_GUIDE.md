@@ -418,9 +418,16 @@ cases, and Firestore needs an index for that:
 ```bash
 gcloud firestore indexes composite create \
   --collection-group=documents \
+  --field-config=field-path=workspace_id,order=ascending \
   --field-config=field-path=document_type,order=ascending \
   --field-config=field-path=processing_state,order=ascending
 ```
+
+`workspace_id` leads the index because the lookback is scoped to one workspace.
+The check asserts that two documents are *the same bill*; run across workspaces
+it would report a new user's first genuine invoice as a duplicate of a seeded
+one. If you built the two-field version of this index before, build this one
+too — the old one no longer serves the query.
 
 Takes a few minutes to build. Check:
 

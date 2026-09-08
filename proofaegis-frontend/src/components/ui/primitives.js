@@ -1,4 +1,5 @@
 import { html, React, useEffect, useRef } from "../../lib.js";
+import { SpotArt } from "../brand/HeroArt.js";
 
 // A tiny inline-SVG icon set — no external icon font/network dependency,
 // and keeps the "professional icons only, no emoji" rule easy to honor.
@@ -40,12 +41,18 @@ export function Skeleton({ width = "100%", height = "16px", style = {} }) {
   return html`<div class="skeleton" style=${{ width, height, ...style }}></div>`;
 }
 
-export function EmptyState({ icon = "inbox", title, description, action }) {
+// `icon` is kept for callers that pass one, but the default is now the drawn
+// spot illustration: a 56px grey circle around a feather glyph is the same
+// empty state every dashboard has had since 2016, and it says nothing about
+// what this product does with a document.
+export function EmptyState({ icon = null, title, description, action }) {
   return html`
-    <div class="stack gap-16" style=${{ alignItems: "center", textAlign: "center", padding: "56px 24px" }}>
-      <div class="panel-elevated" style=${{ width: 56, height: 56, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 999, color: "var(--text-muted)" }}>
-        <${Icon} name=${icon} size=${26} />
-      </div>
+    <div class="stack gap-16" style=${{ alignItems: "center", textAlign: "center", padding: "48px 24px" }}>
+      ${icon
+        ? html`<div class="panel-elevated" style=${{ width: 56, height: 56, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 999, color: "var(--text-muted)" }}>
+            <${Icon} name=${icon} size=${26} />
+          </div>`
+        : html`<${SpotArt} tone="empty" />`}
       <div class="stack gap-8" style=${{ alignItems: "center" }}>
         <h3 class="text-section-title">${title}</h3>
         <p class="text-secondary" style=${{ maxWidth: 380 }}>${description}</p>
@@ -69,10 +76,8 @@ export function ErrorState({ title = "Something went wrong", message, onRetry, c
     `;
   }
   return html`
-    <div class="stack gap-16" style=${{ alignItems: "center", textAlign: "center", padding: "48px 24px" }}>
-      <div class="panel-elevated" style=${{ width: 52, height: 52, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 999, color: "var(--exception)" }}>
-        <${Icon} name="shield" size=${24} />
-      </div>
+    <div class="stack gap-16" style=${{ alignItems: "center", textAlign: "center", padding: "44px 24px" }}>
+      <${SpotArt} tone="error" />
       <div class="stack gap-8" style=${{ alignItems: "center" }}>
         <h3 class="text-section-title">${title}</h3>
         <p class="text-secondary" style=${{ maxWidth: 420 }}>${message}</p>

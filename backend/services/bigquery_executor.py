@@ -64,6 +64,7 @@ from services.analytics_service import (
     CLEAN_TYPE,
     OPEN_STATUSES,
     SLA_BREACH_DAYS,
+    bucket_for_age,
     _cross_case_headline,
     _risk_band,
     _why_at_risk,
@@ -224,6 +225,16 @@ def _run(sql: str, params: dict) -> list[dict]:
 # the same reason the Python path keeps it: an undated seed case should not
 # silently vanish from a count.
 _WINDOW = "(@cutoff IS NULL OR created_at IS NULL OR created_at >= @cutoff)"
+# The tenancy predicate, and the reason it is folded into the shared _SCOPE
+# constant rather than added per query: there are five queries here and each
+# one is a claim about a population. A workspace filter that is present in
+# four of them is not a weaker control than one present in five — it is a
+# leak with four places that look like it was handled.
+#
+# NULL means every workspace, which is what the loader and the parity
+# fixtures want. A request never sends NULL.
+_WORKSPACE = "(@workspace_id IS NULL OR workspace_id = @workspace_id)"
+_SCOPE = f"{_WINDOW} AND {_WORKSPACE}"
 _IS_EXCEPTION = "(exception_type IS NOT NULL AND exception_type != @clean_type)"
 
 
@@ -232,7 +243,7 @@ _IS_EXCEPTION = "(exception_type IS NOT NULL AND exception_type != @clean_type)"
 # ---------------------------------------------------------------------------
 VENDOR_RISK_SQL = f"""
 WITH scoped AS (
-  SELECT * FROM `{{table}}` WHERE {_WINDOW}
+  SELECT * FROM `{{table}}` WHERE {_SCOPE}
 ),
 per_vendor AS (
   SELECT
@@ -274,13 +285,14 @@ ORDER BY v.value_at_risk DESC, SAFE_DIVIDE(v.exception_count, v.invoice_count) D
 """
 
 
-def vendor_risk(days: Optional[int] = 365, limit: int = 25) -> dict:
+def vendor_risk(days: Optional[int] = 365, limit: int = 25,
+                workspace_id: Optional[str] = None) -> dict:
     """Same contract as analytics_service.vendor_risk, one GROUP BY instead
     of a full read into Python."""
     rows = _run(
         VENDOR_RISK_SQL.format(table=table_ref()),
         {"cutoff": _cutoff(days), "clean_type": CLEAN_TYPE,
-         "open_statuses": OPEN_STATUSES},
+         "open_statuses": OPEN_STATUSES, "workspace_id": workspace_id},
     )
 
     out = []
@@ -337,16 +349,17 @@ SELECT
   COUNTIF(NOT ({_IS_EXCEPTION}))                                AS clean,
   SUM(IF({_IS_EXCEPTION}, COALESCE(financial_impact, 0), 0))    AS value_at_risk
 FROM `{{table}}`
-WHERE {_WINDOW} AND created_at IS NOT NULL
+WHERE {_SCOPE} AND created_at IS NOT NULL
 GROUP BY month
 ORDER BY month
 """
 
 
-def monthly_trend(months: int = 12) -> dict:
+def monthly_trend(months: int = 12, workspace_id: Optional[str] = None) -> dict:
     rows = _run(
         MONTHLY_TREND_SQL.format(table=table_ref()),
-        {"cutoff": _cutoff(months * 31), "clean_type": CLEAN_TYPE},
+        {"cutoff": _cutoff(months * 31), "clean_type": CLEAN_TYPE,
+         "workspace_id": workspace_id},
     )
     points = [{
         "month": row["month"],
@@ -369,7 +382,7 @@ WITH open_cases AS (
     COALESCE(financial_impact, 0) AS financial_impact,
     TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), created_at, SECOND) / 86400.0 AS age_days
   FROM `{{table}}`
-  WHERE {_WINDOW}
+  WHERE {_SCOPE}
     AND {_IS_EXCEPTION}
     AND status IN UNNEST(@open_statuses)
     AND created_at IS NOT NULL
@@ -383,11 +396,12 @@ FROM open_cases
 """
 
 
-def ageing(days: Optional[int] = 365) -> dict:
+def ageing(days: Optional[int] = 365, workspace_id: Optional[str] = None) -> dict:
     rows = _run(
         AGEING_SQL.format(table=table_ref()),
         {"cutoff": _cutoff(days), "clean_type": CLEAN_TYPE,
-         "open_statuses": OPEN_STATUSES, "sla_days": SLA_BREACH_DAYS},
+         "open_statuses": OPEN_STATUSES, "sla_days": SLA_BREACH_DAYS,
+         "workspace_id": workspace_id},
     )
     row = rows[0] if rows else {}
 
@@ -398,11 +412,10 @@ def ageing(days: Optional[int] = 365) -> dict:
     for entry in (row.get("rows_out") or []):
         age = float(entry["age_days"])
         impact = float(entry["financial_impact"] or 0)
-        for label, low, high in AGE_BUCKETS:
-            if age >= low and (high is None or age <= high):
-                buckets[label]["count"] += 1
-                buckets[label]["value_at_risk"] += impact
-                break
+        label = bucket_for_age(age)
+        if label is not None:
+            buckets[label]["count"] += 1
+            buckets[label]["value_at_risk"] += impact
 
     return {
         "sla_days": SLA_BREACH_DAYS,
@@ -422,7 +435,7 @@ def ageing(days: Optional[int] = 365) -> dict:
 # ---------------------------------------------------------------------------
 PORTFOLIO_SUMMARY_SQL = f"""
 WITH scoped AS (
-  SELECT * FROM `{{table}}` WHERE {_WINDOW}
+  SELECT * FROM `{{table}}` WHERE {_SCOPE}
 ),
 totals AS (
   SELECT
@@ -450,11 +463,11 @@ FROM totals t
 """
 
 
-def portfolio_summary(days: Optional[int] = 365) -> dict:
+def portfolio_summary(days: Optional[int] = 365, workspace_id: Optional[str] = None) -> dict:
     rows = _run(
         PORTFOLIO_SUMMARY_SQL.format(table=table_ref()),
         {"cutoff": _cutoff(days), "clean_type": CLEAN_TYPE,
-         "open_statuses": OPEN_STATUSES},
+         "open_statuses": OPEN_STATUSES, "workspace_id": workspace_id},
     )
     row = rows[0] if rows else {}
 
@@ -491,7 +504,7 @@ def portfolio_summary(days: Optional[int] = 365) -> dict:
 # from what the matcher actually classifies as cross-case.
 CROSS_CASE_SQL = f"""
 WITH scoped AS (
-  SELECT * FROM `{{table}}` WHERE {_WINDOW}
+  SELECT * FROM `{{table}}` WHERE {_SCOPE}
 ),
 exceptions AS (
   SELECT *, exception_type IN UNNEST(@cross_types) AS is_cross
@@ -519,14 +532,15 @@ FROM exceptions
 """
 
 
-def cross_case_value(days: Optional[int] = 365) -> dict:
+def cross_case_value(days: Optional[int] = 365, workspace_id: Optional[str] = None) -> dict:
     from schemas import CROSS_CASE_TYPE_VALUES  # noqa: PLC0415
 
     rows = _run(
         CROSS_CASE_SQL.format(table=table_ref()),
         {"cutoff": _cutoff(days), "clean_type": CLEAN_TYPE,
          "cross_types": CROSS_CASE_TYPE_VALUES,
-         "clean_match_score": CLEAN_MATCH_SCORE},
+         "clean_match_score": CLEAN_MATCH_SCORE,
+         "workspace_id": workspace_id},
     )
     row = rows[0] if rows else {}
 

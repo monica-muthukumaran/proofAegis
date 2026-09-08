@@ -88,6 +88,21 @@ class ExceptionType(str, Enum):
     # inside tolerance and the cumulative rise well outside it. The price
     # equivalent of PO_OVER_BILLED, and equally invisible per invoice.
     VENDOR_PRICE_DRIFT = "vendor_price_drift"
+    # The documents on this case do not describe the same transaction — an
+    # invoice for one order sitting next to a purchase order for another.
+    #
+    # This exists because every other type on this list is a claim about a
+    # NUMBER, and a number computed across two unrelated documents is
+    # fabricated. Before this type existed, an invoice for 100 steel pipes
+    # against an order for 12 office chairs was reported as a 211,200
+    # quantity variance at high risk, with the basis "88 unreceived units" —
+    # 100 pipes minus 12 chairs. Nothing about that finding was true, and it
+    # was stated as confidently as a real one.
+    #
+    # See services/coherence_service.py for what counts as evidence. The bar
+    # is deliberately high: wrongly telling a reviewer their documents do not
+    # belong together sends them to re-upload files that were fine.
+    UNRELATED_DOCUMENTS = "unrelated_documents"
 
 
 # The exception types that CANNOT be reached by looking at one case's
@@ -298,6 +313,13 @@ class MatchResult(BaseModel):
     # A rising unit-price trend across this vendor's invoices, when one was
     # found. See services/history_service.py:detect_price_drift.
     price_drift: Optional[dict] = None
+    # Whether the documents on this case were established to describe the same
+    # transaction, and the evidence either way. Present on EVERY result, not
+    # only on an UNRELATED_DOCUMENTS one: "we checked that these belong
+    # together and they do" is a fact a reviewer needs in order to trust the
+    # variance below it, and it is exactly the fact that was missing before.
+    # See services/coherence_service.py.
+    coherence: Optional[dict] = None
     # True when the exception type came from a check that needed other cases
     # in the workspace. This is the field the portfolio analytics count to
     # answer "what would a per-invoice system have missed", so it is set here,

@@ -345,9 +345,15 @@ cases:
 ```bash
 gcloud firestore indexes composite create \
   --collection-group=documents \
+  --field-config=field-path=workspace_id,order=ascending \
   --field-config=field-path=document_type,order=ascending \
   --field-config=field-path=processing_state,order=ascending
 ```
+
+`workspace_id` leads it because the lookback stops at the workspace boundary —
+the check asserts two documents are *the same bill*, and unscoped it would
+report a new user's first genuine invoice as a duplicate of a seeded one. A
+previously built two-field index no longer serves this query.
 
 If you skip this, Firestore prints a one-click creation link the first time the
 query runs. Check status:

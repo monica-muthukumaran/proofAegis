@@ -202,6 +202,10 @@ def _query(con, sql: str, cutoff_days: int | None):
     translated = translated.replace("@sla_days", str(analytics_service.SLA_BREACH_DAYS))
     translated = translated.replace(
         "@clean_match_score", str(analytics_service.CLEAN_MATCH_SCORE))
+    # NULL: the fixture population is one workspace, and the comparison is
+    # against the Python path reading the same rows unscoped. The predicate
+    # itself is on trial in test_the_workspace_predicate_scopes_every_query.
+    translated = translated.replace("@workspace_id", "NULL")
     cursor = con.execute(translated)
     names = [d[0] for d in cursor.description]
     return [dict(zip(names, row)) for row in cursor.fetchall()]
@@ -250,6 +254,65 @@ def test_unknown_fields_are_dropped_rather_than_carried():
     assert row["exception_id"] == "EXC-1"
 
 
+def test_the_workspace_predicate_scopes_every_query():
+    """The tenancy control on the SQL path, asserted per query.
+
+    A workspace filter present in four of five queries is not a weaker
+    control than one present in five — it is a leak with four places that
+    look like it was handled. So this asserts the predicate on each SQL
+    constant by name rather than trusting the shared `_SCOPE` string to have
+    been used everywhere.
+    """
+    queries = {
+        "vendor_risk": bq.VENDOR_RISK_SQL,
+        "monthly_trend": bq.MONTHLY_TREND_SQL,
+        "ageing": bq.AGEING_SQL,
+        "portfolio_summary": bq.PORTFOLIO_SUMMARY_SQL,
+        "cross_case_value": bq.CROSS_CASE_SQL,
+    }
+    for name, sql in queries.items():
+        assert "@workspace_id" in sql, f"{name} has no workspace predicate"
+        assert "workspace_id = @workspace_id" in sql, f"{name} does not compare it"
+
+
+def test_the_workspace_predicate_is_bound_as_a_parameter_not_interpolated(monkeypatch):
+    """A workspace id arrives from a verified token, but the rule is the same
+    one that governs `days`: nothing reaches this SQL by string substitution."""
+    captured = {}
+    monkeypatch.setattr(bq, "_run", lambda sql, params: captured.update(params) or [])
+
+    bq.portfolio_summary(365, workspace_id="user:uid-alice")
+    assert captured["workspace_id"] == "user:uid-alice"
+
+    for fn, args in ((bq.vendor_risk, (365, 10)), (bq.monthly_trend, (12,)),
+                     (bq.ageing, (365,)), (bq.cross_case_value, (365,))):
+        captured.clear()
+        fn(*args, workspace_id="user:uid-bob")
+        assert captured["workspace_id"] == "user:uid-bob", fn.__name__
+
+
+def test_the_workspace_filter_actually_filters(con):
+    """Executed, not just inspected. The predicate is run against DuckDB with
+    a real value to prove it excludes rows — a predicate that is present and
+    always true would satisfy the two tests above."""
+    con.execute("CREATE TABLE IF NOT EXISTS scoped_probe AS SELECT * FROM cases LIMIT 0")
+    all_rows = con.execute("SELECT COUNT(*) FROM cases").fetchone()[0]
+    mine = con.execute(
+        f"SELECT COUNT(*) FROM cases WHERE {bq._WORKSPACE}".replace(
+            "@workspace_id", "'test-workspace'")).fetchone()[0]
+    someone_else = con.execute(
+        f"SELECT COUNT(*) FROM cases WHERE {bq._WORKSPACE}".replace(
+            "@workspace_id", "'user:uid-alice'")).fetchone()[0]
+    unscoped = con.execute(
+        f"SELECT COUNT(*) FROM cases WHERE {bq._WORKSPACE}".replace(
+            "@workspace_id", "NULL")).fetchone()[0]
+
+    assert all_rows > 0
+    assert mine == all_rows           # the fixture population's own workspace
+    assert someone_else == 0          # and nobody else sees any of it
+    assert unscoped == all_rows       # NULL means every workspace, for loaders
+
+
 def test_table_is_partitioned_and_clustered():
     """The cost control is the reason this is defensible at volume. An
     unpartitioned table scans all history for a 30-day question."""
@@ -271,25 +334,29 @@ def test_gateway_does_not_read_the_collection_on_the_bigquery_path(monkeypatch):
     called BigQuery, it would have done the scan the SQL exists to avoid."""
     called = []
     monkeypatch.setattr(analytics_gateway, "_cases",
-                        lambda: called.append(1) or [])
+                        lambda workspace_id=None: called.append(1) or [])
     monkeypatch.setattr(config, "ANALYTICS_ENGINE", "bigquery")
     monkeypatch.setattr(analytics_gateway, "_executor",
                         lambda: _StubExecutor())
 
-    analytics_gateway.portfolio_summary(365)
-    analytics_gateway.vendor_risk(365, 10)
-    analytics_gateway.cross_case_value(365)
+    analytics_gateway.portfolio_summary(365, workspace_id="ws-1")
+    analytics_gateway.vendor_risk(365, 10, workspace_id="ws-1")
+    analytics_gateway.cross_case_value(365, workspace_id="ws-1")
     assert called == [], "the BigQuery path read the case collection"
 
 
 class _StubExecutor:
-    def portfolio_summary(self, days):
+    """Signatures match the real executor's, workspace argument included —
+    the gateway must pass the workspace down on the BigQuery path too, and a
+    stub that shrugged it off would hide the day it stops."""
+
+    def portfolio_summary(self, days, workspace_id=None):
         return {}
 
-    def vendor_risk(self, days, limit):
+    def vendor_risk(self, days, limit, workspace_id=None):
         return {}
 
-    def cross_case_value(self, days):
+    def cross_case_value(self, days, workspace_id=None):
         return {}
 
 

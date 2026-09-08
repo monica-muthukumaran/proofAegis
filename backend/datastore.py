@@ -67,12 +67,29 @@ class InMemoryDatastore:
             case.setdefault("workspace_id", config.DEFAULT_WORKSPACE_ID)
 
     # --- exceptions ---
-    def list_exceptions(self) -> list[dict]:
-        return [self._public_view(c) for c in self._cases.values()]
+    def list_exceptions(self, workspace_id: Optional[str] = None) -> list[dict]:
+        """Every case in one workspace, or in all of them when workspace_id
+        is None.
 
-    def get_exception(self, exception_id: str) -> Optional[dict]:
+        None means "no scoping asked for" and is used by the loaders and the
+        eval harness, which legitimately want the whole store. Every REQUEST
+        path passes a workspace, because a queue that shows another user's
+        invoices is the failure this argument exists to prevent.
+        """
+        return [self._public_view(c) for c in self._cases.values()
+                if _in_workspace(c, workspace_id)]
+
+    def get_exception(self, exception_id: str, workspace_id: Optional[str] = None) -> Optional[dict]:
+        """A case, or None when it is not this workspace's to read.
+
+        Not-found and not-yours are deliberately the same answer here: the
+        routes turn both into a 404, so a case id cannot be probed for
+        existence from outside the workspace that owns it.
+        """
         case = self._cases.get(exception_id)
-        return self._public_view(case) if case else None
+        if case is None or not _in_workspace(case, workspace_id):
+            return None
+        return self._public_view(case)
 
     def get_matching_input(self, exception_id: str) -> Optional[dict]:
         case = self._cases.get(exception_id)
@@ -121,13 +138,22 @@ class InMemoryDatastore:
         return view
 
     # --- settings ---
-    def find_documents_by_type(self, document_type: str, exclude_exception_id=None) -> list[dict]:
-        """Every completed document of a type, across ALL cases.
+    def find_documents_by_type(self, document_type: str, exclude_exception_id=None,
+                                workspace_id: Optional[str] = None) -> list[dict]:
+        """Every completed document of a type, across all cases IN ONE
+        WORKSPACE.
 
         Duplicate invoices, cumulative billing against one purchase order and
         a vendor's changed bank details are all invisible from inside a single
         case — they are only findable by looking at what came before. This is
         the one query that crosses the case boundary.
+
+        It crosses the case boundary and stops dead at the workspace one, and
+        that limit is not incidental. These checks assert that two documents
+        are THE SAME BILL. Run across workspaces, the seeded corpus would
+        report a new user's first genuine invoice as a duplicate of a
+        synthetic one — a confident, specific, entirely false accusation, in
+        the highest-ranked finding the product has.
         """
         out = []
         for document in self._documents.values():
@@ -136,6 +162,8 @@ class InMemoryDatastore:
             if document.get("processing_state") != "completed":
                 continue
             if exclude_exception_id and document.get("exception_id") == exclude_exception_id:
+                continue
+            if not _in_workspace(document, workspace_id):
                 continue
             out.append(copy.deepcopy(document))
         return out
@@ -184,13 +212,18 @@ class FirestoreDatastore:
         from firestore_client import get_db
         self._db = get_db()
 
-    def list_exceptions(self) -> list[dict]:
-        docs = self._db.collection("invoice_exceptions").stream()
-        return [d.to_dict() for d in docs]
+    def list_exceptions(self, workspace_id: Optional[str] = None) -> list[dict]:
+        query = self._db.collection("invoice_exceptions")
+        if workspace_id is not None:
+            query = query.where("workspace_id", "==", workspace_id)
+        return [d.to_dict() for d in query.stream()]
 
-    def get_exception(self, exception_id: str) -> Optional[dict]:
+    def get_exception(self, exception_id: str, workspace_id: Optional[str] = None) -> Optional[dict]:
         doc = self._db.collection("invoice_exceptions").document(exception_id).get()
-        return doc.to_dict() if doc.exists else None
+        if not doc.exists:
+            return None
+        case = doc.to_dict()
+        return case if _in_workspace(case, workspace_id) else None
 
     def get_matching_input(self, exception_id: str) -> Optional[dict]:
         doc = self._db.collection("invoice_exceptions").document(exception_id).get()
@@ -226,13 +259,17 @@ class FirestoreDatastore:
         doc = ref.get()
         return doc.to_dict() if doc.exists else None
 
-    def find_documents_by_type(self, document_type: str, exclude_exception_id=None) -> list[dict]:
+    def find_documents_by_type(self, document_type: str, exclude_exception_id=None,
+                                workspace_id: Optional[str] = None) -> list[dict]:
         """See InMemoryDatastore.find_documents_by_type. Needs a composite
-        index on documents(document_type, processing_state); Firestore prints
-        the creation link on the first call if it is missing."""
+        index on documents(workspace_id, document_type, processing_state);
+        Firestore prints the creation link on the first call if it is
+        missing."""
         query = (self._db.collection("documents")
                  .where("document_type", "==", document_type)
                  .where("processing_state", "==", "completed"))
+        if workspace_id is not None:
+            query = query.where("workspace_id", "==", workspace_id)
         out = [d.to_dict() for d in query.stream()]
         if exclude_exception_id:
             out = [d for d in out if d.get("exception_id") != exclude_exception_id]
@@ -280,6 +317,23 @@ class FirestoreDatastore:
                 .order_by("timestamp").stream())
         return [d.to_dict() for d in docs]
 
+
+
+def _in_workspace(record: Optional[dict], workspace_id: Optional[str]) -> bool:
+    """Whether a case or document record belongs to the asked-for workspace.
+
+    `workspace_id=None` means the caller asked for no scoping at all and gets
+    everything — the loaders, the eval harness and the seeding scripts.
+
+    A record with NO workspace_id of its own counts as the demo workspace's.
+    That is the honest reading of the data that already exists: everything
+    written before per-user workspaces was written by, and for, the shared
+    demo. It also means such a record can never leak into a real user's
+    queue, because a real user's workspace id is never the default.
+    """
+    if workspace_id is None:
+        return True
+    return (record or {}).get("workspace_id", config.DEFAULT_WORKSPACE_ID) == workspace_id
 
 
 def resolve_tolerance(base: dict, vendor_name=None, category=None) -> dict:

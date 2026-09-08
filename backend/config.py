@@ -192,9 +192,38 @@ class Config:
     # routes that did not exist yet.
     REVISION = os.environ.get("K_REVISION", "")
 
-    # --- Workspace (P2 scaffolding, enforced from P0 so storage paths are
-    # right from the first byte written rather than retrofitted later) ---
+    # --- Workspace ---
+    # The workspace that holds the seeded/synthetic corpus. Anyone who is not
+    # signed in (demo-auth and mock mode) lands here, which is what keeps the
+    # zero-setup demo working exactly as before.
     DEFAULT_WORKSPACE_ID = os.environ.get("DEFAULT_WORKSPACE_ID", "demo-workspace")
+
+    # A VERIFIED user with no `workspace_id` custom claim gets their own
+    # workspace, keyed to their Firebase uid — so a real person signing up
+    # opens on an empty queue and every case they create is filed under their
+    # login, rather than joining everyone else in the demo pile.
+    #
+    # The seeded corpus is not lost to them: it still trains and grounds the
+    # model through services/seed_context.py, which is workspace-independent
+    # by design. What is scoped is the CASE LIST — their queue, their
+    # dashboard, their analytics, and the cross-case history that duplicate
+    # and drift detection reads. That last one is the important scoping: a
+    # synthetic invoice must never be reported as the duplicate of a real one.
+    #
+    # Set to false to restore the previous single-shared-workspace behaviour.
+    PER_USER_WORKSPACES = _bool_env("PER_USER_WORKSPACES", True)
+    USER_WORKSPACE_PREFIX = os.environ.get("USER_WORKSPACE_PREFIX", "user")
+
+    # Real accounts that should still land in the demo workspace and see the
+    # seeded cases — the one-click demo login the frontend ships
+    # (VITE_DEMO_EMAIL) belongs here, otherwise a reviewer signing in with it
+    # meets an empty screen. Comma-separated, compared case-insensitively.
+    DEMO_ACCOUNT_EMAILS = frozenset(
+        entry.strip().lower()
+        for entry in os.environ.get(
+            "DEMO_ACCOUNT_EMAILS", "judge@demo.proofaegis.local").split(",")
+        if entry.strip()
+    )
 
 
 config = Config()

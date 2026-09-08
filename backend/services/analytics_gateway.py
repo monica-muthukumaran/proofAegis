@@ -59,39 +59,47 @@ def _executor():
     return bigquery_executor
 
 
-def _cases() -> list[dict]:
-    """The full-collection read. Reached only on the Firestore path."""
-    return get_datastore().list_exceptions()
+def _cases(workspace_id: Optional[str]) -> list[dict]:
+    """The collection read. Reached only on the Firestore path.
+
+    Scoped by workspace for the same reason the SQL below carries a
+    workspace predicate: an analytics screen is a claim about a population,
+    and a population that quietly includes somebody else's invoices makes
+    every figure on the screen a lie. `None` reads everything, and is for the
+    loaders and the eval harness only.
+    """
+    return get_datastore().list_exceptions(workspace_id)
 
 
-def portfolio_summary(days: Optional[int] = 365) -> dict:
+def portfolio_summary(days: Optional[int] = 365, workspace_id: Optional[str] = None) -> dict:
     if using_bigquery():
-        return _executor().portfolio_summary(days)
-    return analytics_service.portfolio_summary(_cases(), days)
+        return _executor().portfolio_summary(days, workspace_id)
+    return analytics_service.portfolio_summary(_cases(workspace_id), days)
 
 
-def vendor_risk(days: Optional[int] = 365, limit: int = 25) -> dict:
+def vendor_risk(days: Optional[int] = 365, limit: int = 25,
+                workspace_id: Optional[str] = None) -> dict:
     if using_bigquery():
-        return _executor().vendor_risk(days, limit)
-    return analytics_service.vendor_risk(_cases(), days, limit)
+        return _executor().vendor_risk(days, limit, workspace_id)
+    return analytics_service.vendor_risk(_cases(workspace_id), days, limit)
 
 
-def monthly_trend(months: int = 12) -> dict:
+def monthly_trend(months: int = 12, workspace_id: Optional[str] = None) -> dict:
     if using_bigquery():
-        return _executor().monthly_trend(months)
-    return analytics_service.monthly_trend(_cases(), months)
+        return _executor().monthly_trend(months, workspace_id)
+    return analytics_service.monthly_trend(_cases(workspace_id), months)
 
 
-def ageing(days: Optional[int] = 365) -> dict:
+def ageing(days: Optional[int] = 365, workspace_id: Optional[str] = None) -> dict:
     if using_bigquery():
-        return _executor().ageing(days)
-    return analytics_service.ageing(_cases(), days)
+        return _executor().ageing(days, workspace_id)
+    return analytics_service.ageing(_cases(workspace_id), days)
 
 
-def cross_case_value(days: Optional[int] = 365) -> dict:
+def cross_case_value(days: Optional[int] = 365, workspace_id: Optional[str] = None) -> dict:
     if using_bigquery():
-        return _executor().cross_case_value(days)
-    return analytics_service.cross_case_value(_cases(), days)
+        return _executor().cross_case_value(days, workspace_id)
+    return analytics_service.cross_case_value(_cases(workspace_id), days)
 
 
 # The five questions this gateway can answer, named once so the parity test

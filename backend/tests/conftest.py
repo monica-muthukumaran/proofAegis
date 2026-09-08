@@ -12,9 +12,17 @@ Everything above that line is the production code under test, not a
 description of it. Token strings map to outcomes:
 
     "valid-token"    -> decoded claims for the demo reviewer
+    "alice-token"    -> a first ordinary signed-up user
+    "bob-token"      -> a second one, so isolation has two sides to it
     "expired-token"  -> ExpiredIdTokenError
     "revoked-token"  -> RevokedIdTokenError
     anything else    -> InvalidIdTokenError
+
+Alice and Bob are the identities the workspace-isolation tests need and the
+demo reviewer cannot supply: `judge@demo.proofaegis.local` is a DESIGNATED
+demo account (config.DEMO_ACCOUNT_EMAILS), so it resolves to the shared
+seeded workspace on purpose and would silently pass an isolation assertion
+that a real signed-up user fails.
 
 The backend README documented this stub; it had gone missing, which is why
 all six auth tests failed against real firebase_admin.
@@ -44,10 +52,28 @@ VALID_CLAIMS = {
     "name": "Demo Reviewer",
 }
 
+ALICE_CLAIMS = {
+    "uid": "uid-alice",
+    "email": "alice@acme.example",
+    "email_verified": True,
+    "name": "Alice",
+}
+
+BOB_CLAIMS = {
+    "uid": "uid-bob",
+    "email": "bob@acme.example",
+    "email_verified": True,
+    "name": "Bob",
+}
+
 
 def _fake_verify_id_token(id_token, app=None, check_revoked=False):
     if id_token == "valid-token":
         return dict(VALID_CLAIMS)
+    if id_token == "alice-token":
+        return dict(ALICE_CLAIMS)
+    if id_token == "bob-token":
+        return dict(BOB_CLAIMS)
     if id_token == "expired-token":
         raise firebase_auth.ExpiredIdTokenError("Token expired", None)
     if id_token == "revoked-token":

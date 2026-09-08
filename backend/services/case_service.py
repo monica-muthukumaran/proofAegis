@@ -212,7 +212,8 @@ async def get_investigation_hypotheses(exception_id: str) -> Optional[AIResult]:
     document_types = sorted({d.get("document_type") for d in documents if d.get("document_type")})
 
     case = ds.get_exception(exception_id) or {}
-    history = _vendor_history(ds, case.get("vendor_name"), exception_id)
+    history = _vendor_history(ds, case.get("vendor_name"), exception_id,
+                              case.get("workspace_id"))
     history["price_drift"] = match_result.price_drift
     history["recurring"] = any(d.get("confidence") == "recurring"
                                for d in (match_result.duplicate_of or []))
@@ -221,8 +222,15 @@ async def get_investigation_hypotheses(exception_id: str) -> Optional[AIResult]:
         match_result, document_types, history, label=exception_id)
 
 
-def _vendor_history(ds, vendor_name: Optional[str], exclude_exception_id: str) -> dict:
-    """This vendor's record across the workspace, counted not judged."""
+def _vendor_history(ds, vendor_name: Optional[str], exclude_exception_id: str,
+                    workspace_id: Optional[str] = None) -> dict:
+    """This vendor's record across the case's OWN workspace, counted not judged.
+
+    Scoped for the same reason the duplicate check is: "this vendor has three
+    prior exceptions" is a statement about the user's own ledger. Counting the
+    synthetic corpus into it would hand the hypothesis agent a history the
+    user has never seen and cannot check.
+    """
     from services import analytics_gateway
     from services.matching_service import vendor_key
 
@@ -232,7 +240,7 @@ def _vendor_history(ds, vendor_name: Optional[str], exclude_exception_id: str) -
     # Through the gateway, so opening one case does not read the whole
     # collection when the BigQuery engine is on — this is the per-case path,
     # and it is the one that runs most often.
-    ranked = analytics_gateway.vendor_risk(days=365, limit=200)
+    ranked = analytics_gateway.vendor_risk(days=365, limit=200, workspace_id=workspace_id)
     for row in ranked.get("vendors", []):
         if vendor_key(row.get("vendor_name")) == target:
             return dict(row)

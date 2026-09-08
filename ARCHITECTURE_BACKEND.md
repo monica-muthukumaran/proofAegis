@@ -119,7 +119,8 @@ backend/
 │   └── intake.py        (95) email intake status + manual poll
 │
 ├── services/
-│   ├── matching_service.py    (963) three-way match, tolerance, impact
+│   ├── matching_service.py   (1224) three-way match, tolerance, impact
+│   ├── coherence_service.py   (373) do these documents describe one deal?
 │   ├── pdf_field_parser.py    (902) deterministic extraction from PDF text
 │   ├── ingestion_service.py   (812) validate, extract, link, analyse
 │   ├── history_service.py     (600) the cross-case checks
@@ -155,7 +156,7 @@ backend/
 │   ├── pdf_layouts.py               6 document dialects
 │   └── seed_firestore.py            push seed + portfolio to Firestore
 │
-└── tests/                      231 tests, 18 files
+└── tests/                      377 tests, 22 files (+ conftest)
 ```
 
 ---
@@ -216,13 +217,14 @@ must act on first:
 | 3 | `po_over_billed` | Running total exceeds the order across several invoices |
 | 4 | `duplicate_invoice` (near) | Same vendor + amount, different number, within 90 days |
 | 5 | `tax_total_mismatch` | The invoice does not reconcile against itself |
-| 6 | `vendor_mismatch` | Billed by someone other than who was ordered from |
-| 7 | `missing_purchase_order` | Nothing to match against |
-| 8 | `missing_goods_receipt` | Nothing confirms delivery |
-| 9 | `quantity_variance` | Invoiced above what was received |
-| 10 | `price_variance` | Invoiced above the ordered rate |
-| 11 | `recurring_suspected` | A recognised billing schedule — a note, not a variance |
-| 12 | `vendor_price_drift` | A rate that crept; this invoice passes on its own |
+| 6 | `missing_purchase_order` | Nothing to match against |
+| 7 | `unrelated_documents` | The documents describe different transactions, so no comparison below is meaningful |
+| 8 | `vendor_mismatch` | Billed by someone other than who was ordered from |
+| 9 | `missing_goods_receipt` | Nothing confirms delivery |
+| 10 | `quantity_variance` | Invoiced above what was received |
+| 11 | `price_variance` | Invoiced above the ordered rate |
+| 12 | `recurring_suspected` | A recognised billing schedule — a note, not a variance |
+| 13 | `vendor_price_drift` | A rate that crept; this invoice passes on its own |
 | — | `no_exception` | A real outcome. The evidence chain still proves the invoice is payable |
 
 Positions 2 and 4 used to be a single branch. The eval harness caught it: an
@@ -230,6 +232,42 @@ invoice for a familiar amount from a familiar vendor with an *unfamiliar bank
 account* was reported as a possible re-submission — which is precisely the
 payment-diversion pattern, described in a way that sends the reviewer to check
 the wrong thing.
+
+### 4.3 The coherence gate
+
+Positions 1–6 are statements about the **invoice** — checked against the
+vendor's history or against itself. Positions 8–13 are built by comparing the
+invoice to the *other documents*, and every one of them assumed something
+nothing verified: that those documents describe the same transaction.
+
+They do not always. `services/coherence_service.py` answers that question
+before any variance is reported, and an invoice for 100 steel pipes beside an
+order for 12 office chairs is why it exists — it was reported as a ₹211,200
+quantity variance at high risk, basis *"88 unreceived units × implied unit
+price"*. 88 is 100 pipes minus 12 chairs. Every digit was fabricated and it
+read exactly like a real finding.
+
+The gate is applied at `evaluate_exception`'s **exit**, not as another branch
+in the cascade — fourteen return statements is too many for a check that must
+run on all of them — and it does two separable things:
+
+1. **Withdraw the cross-document arithmetic**, on every contradicted case
+   whatever finding wins. The comparisons are re-marked `unable_to_verify`
+   with their *values kept and their variances cleared*, `po_billing` and the
+   per-line table are dropped, and the match score is scored over the
+   cross-document rows alone — so it is 0, the same answer
+   `missing_purchase_order` gives for the same reason.
+2. **Choose the finding.** Types 1–6 (`_SURVIVES_INCOHERENCE`) stand: a
+   duplicate is a duplicate whichever order sits beside it. Everything else,
+   `no_exception` included, becomes `unrelated_documents`.
+
+Evidence, never inference: a purchase-order reference conflict, a goods
+receipt against another order, or *both* zero descriptive overlap between the
+line items **and** an invoice larger than the order could account for. Text
+alone is not enough — a PO for "Annual maintenance contract" billed as "AMC
+renewal Q1 FY26" shares no word with its own order — so two independent
+dimensions have to disagree, and a partial billing can never trigger it.
+Weaker signals report `unverified` rather than being rounded up.
 
 ---
 
@@ -451,9 +489,16 @@ Two implementations behind one interface, chosen once at import by
 | `audit_events` | FR-012 audit trail |
 | `settings` | `tolerance_rules`, `approval_policy` |
 
-One composite index is needed: `documents(document_type, processing_state)`,
-for the cross-case query. Firestore prints the creation link on the first call
-if it is missing.
+One composite index is needed:
+`documents(workspace_id, document_type, processing_state)`, for the cross-case
+query. Firestore prints the creation link on the first call if it is missing.
+
+`workspace_id` is part of it because the cross-case lookback stops at the
+workspace boundary — see `datastore.find_documents_by_type`. Every case and
+document record carries the field. A record written without one is read as the
+demo workspace's by `datastore._in_workspace`, but Firestore's equality filter
+will not match a document that *lacks* the field at all, which is why
+`scripts/seed_firestore.py` stamps it on every write.
 
 ### 9.2 Object storage
 
@@ -484,8 +529,9 @@ All routes are prefixed `/api`. All carry `@require_auth`.
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `` | list cases |
-| POST | `` | create an empty case |
+| POST | `` | create an empty case — optional `title` names it |
 | GET | `/<id>` | one case |
+| PATCH | `/<id>` | set or clear the case title (`{"title": null}` clears) |
 | GET | `/<id>/documents` | documents on the case |
 | POST | `/<id>/documents` | upload PDFs (multipart, ≤20/request) |
 | POST | `/<id>/documents/<doc_id>/retry` | re-extract one document |
@@ -555,6 +601,50 @@ CORS is an explicit allow-list (`ALLOWED_ORIGINS`), never `*`, because Firebase
 ID tokens are accepted. `allow_headers` must include `Authorization` or the
 browser's preflight strips it before Flask ever sees the token.
 
+### 11.1 Workspaces — who sees which cases
+
+`auth.workspace_for_claims` resolves a verified token to exactly one workspace,
+and everything else scopes off that answer. The order is deliberate:
+
+| Identity | Workspace | Why |
+|---|---|---|
+| `workspace_id` custom claim | that claim | how a real team shares one workspace |
+| no verified user | `demo-workspace` | demo-auth and mock mode, unchanged |
+| email in `DEMO_ACCOUNT_EMAILS` | `demo-workspace` | the one-click demo login is a *real* sign-in and must still land on the seeded cases |
+| anyone else | `user:<uid>` | their own workspace, and it starts empty |
+
+Keyed on **uid, not email**: an email can be changed on an account and a uid
+cannot, and a workspace that moved when somebody edited their profile would be
+a workspace that lost every case in it.
+
+**What is scoped.** The queue, the single-case reads, the dashboard, all five
+analytics (Firestore *and* BigQuery — `_WORKSPACE` is folded into the shared
+`_SCOPE` predicate so a query cannot be written without it), and the cross-case
+document lookback. A case that belongs to another workspace answers **404, not
+403** — a 403 would confirm the id is real to anyone willing to guess at one.
+
+The cross-case scoping is the one that matters most. Those checks assert that
+two documents are *the same bill*. Unscoped, the seeded corpus would report a
+new user's first genuine invoice as a duplicate of a synthetic one: a
+confident, specific, entirely false accusation, in the highest-ranked finding
+the product produces.
+
+**What is deliberately not scoped.** `services/seed_context.py` — the seeded
+corpus still calibrates the reasoning agent's severity scale for *every*
+workspace, including an empty one. Only anonymised shapes cross that boundary
+(exception type, order of magnitude, risk level, score band), built from a
+four-field whitelist rather than filtered, and the model is told they are not
+evidence. The financial guardrail is untouched: severity and language are what
+the calibration anchors, and the money is still the deterministic matcher's
+alone.
+
+**Storage paths were already workspace-scoped** from the first byte written
+(`workspaces/{workspace_id}/cases/...`), so this was a claims-and-queries
+change rather than a data migration.
+
+Set `PER_USER_WORKSPACES=false` to restore the single-shared-workspace
+behaviour.
+
 ---
 
 ## 12. Configuration
@@ -585,7 +675,10 @@ Everything is read in `config.py`; nothing else touches `os.environ`.
 | `OCR_ENABLED` | `false` | needs Tesseract on PATH |
 | `OCR_DPI` | `300` | render resolution when OCR runs |
 | `SIGNED_URL_TTL_MINUTES` | `15` | lifetime of a signed object URL |
-| `DEFAULT_WORKSPACE_ID` | `demo-workspace` | |
+| `DEFAULT_WORKSPACE_ID` | `demo-workspace` | holds the seeded corpus; where unauthenticated requests land |
+| `PER_USER_WORKSPACES` | `true` | a verified user with no workspace claim gets `user:<uid>`, starting empty |
+| `USER_WORKSPACE_PREFIX` | `user` | prefix for those ids |
+| `DEMO_ACCOUNT_EMAILS` | `judge@demo.proofaegis.local` | real accounts that still see the demo workspace — **must match the frontend's `VITE_DEMO_EMAIL`** |
 
 ### Email intake
 

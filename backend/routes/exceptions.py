@@ -31,6 +31,23 @@ from services.storage_service import StorageError, get_storage
 bp = Blueprint("exceptions", __name__, url_prefix="/api/exceptions")
 
 
+def _visible_case(ds, exception_id: str):
+    """The case, or None when it does not exist OR belongs to someone else.
+
+    Those two are deliberately one answer. Returning 403 for "exists but not
+    yours" would confirm the id is real to anyone willing to guess at one, so
+    every caller below turns a None from here into the same 404 it already
+    returned for a genuinely unknown id.
+
+    Every route that reads or writes a single case goes through this. The
+    routes that then call into services/case_service.py rely on it having run
+    first — those functions take an exception_id and fetch unscoped, which is
+    correct for them (a background re-analysis has no request identity) and
+    is exactly why the check belongs here, at the edge, once.
+    """
+    return ds.get_exception(exception_id, current_workspace_id())
+
+
 @bp.get("")
 @require_auth
 def list_exceptions():
@@ -39,14 +56,16 @@ def list_exceptions():
     with the match workspace. Filtering/sorting stays client-side per the
     pack's explicit note."""
     ds = get_datastore()
-    return jsonify([case_service.summarize_exception(e) for e in ds.list_exceptions()])
+    workspace_id = current_workspace_id()
+    return jsonify([case_service.summarize_exception(e)
+                    for e in ds.list_exceptions(workspace_id)])
 
 
 @bp.get("/<exception_id>")
 @require_auth
 def get_exception(exception_id: str):
     ds = get_datastore()
-    exc = ds.get_exception(exception_id)
+    exc = _visible_case(ds, exception_id)
     if exc is None:
         return jsonify({"error": "not_found"}), 404
     return jsonify(case_service.summarize_exception(exc))
@@ -56,7 +75,7 @@ def get_exception(exception_id: str):
 @require_auth
 def get_documents(exception_id: str):
     ds = get_datastore()
-    if ds.get_exception(exception_id) is None:
+    if _visible_case(ds, exception_id) is None:
         return jsonify({"error": "not_found"}), 404
     return jsonify(ds.get_documents(exception_id))
 
@@ -72,7 +91,7 @@ def get_progress(exception_id: str):
     wait.
     """
     ds = get_datastore()
-    if ds.get_exception(exception_id) is None:
+    if _visible_case(ds, exception_id) is None:
         return jsonify({"error": "not_found"}), 404
     return jsonify(ingestion_service.progress(ds.get_documents(exception_id)))
 
@@ -80,6 +99,8 @@ def get_progress(exception_id: str):
 @bp.get("/<exception_id>/match")
 @require_auth
 def get_match(exception_id: str):
+    if _visible_case(get_datastore(), exception_id) is None:
+        return jsonify({"error": "not_found"}), 404
     result = case_service.get_match_result(exception_id)
     if result is None:
         return jsonify({"error": "not_found"}), 404
@@ -89,6 +110,8 @@ def get_match(exception_id: str):
 @bp.get("/<exception_id>/graph")
 @require_auth
 def get_graph(exception_id: str):
+    if _visible_case(get_datastore(), exception_id) is None:
+        return jsonify({"error": "not_found"}), 404
     graph = case_service.get_evidence_graph(exception_id)
     if graph is None:
         return jsonify({"error": "not_found"}), 404
@@ -100,6 +123,8 @@ def get_graph(exception_id: str):
 def get_reasoning(exception_id: str):
     """FR-007 — cached Exception Reasoning Agent output, if already generated."""
     ds = get_datastore()
+    if _visible_case(ds, exception_id) is None:
+        return jsonify({"error": "not_found"}), 404
     existing = ds.get_reasoning(exception_id)
     if existing:
         return jsonify(existing)
@@ -110,7 +135,7 @@ def get_reasoning(exception_id: str):
 @require_auth
 def generate_reasoning(exception_id: str):
     ds = get_datastore()
-    if ds.get_exception(exception_id) is None:
+    if _visible_case(ds, exception_id) is None:
         return jsonify({"error": "not_found"}), 404
 
     ai_result = asyncio.run(case_service.get_exception_reasoning(exception_id))
@@ -142,7 +167,7 @@ def get_trust_check(exception_id: str):
     there is no model figure to have checked, and reporting agreement would be
     reporting a comparison that never happened.
     """
-    case = get_datastore().get_exception(exception_id)
+    case = _visible_case(get_datastore(), exception_id)
     if case is None:
         return jsonify({"error": "not_found"}), 404
     check = case.get("trust_check")
@@ -155,7 +180,10 @@ def get_trust_check(exception_id: str):
 @require_auth
 def get_hypotheses(exception_id: str):
     """FR-007b — cached hypothesis set, if already generated."""
-    existing = get_datastore().get_hypotheses(exception_id)
+    ds = get_datastore()
+    if _visible_case(ds, exception_id) is None:
+        return jsonify({"error": "not_found"}), 404
+    existing = ds.get_hypotheses(exception_id)
     if existing:
         return jsonify(existing)
     return jsonify({"error": "not_generated"}), 404
@@ -171,7 +199,7 @@ def generate_hypotheses_route(exception_id: str):
     guardrail to check, because there is nothing financial in it.
     """
     ds = get_datastore()
-    if ds.get_exception(exception_id) is None:
+    if _visible_case(ds, exception_id) is None:
         return jsonify({"error": "not_found"}), 404
 
     ai_result = asyncio.run(case_service.get_investigation_hypotheses(exception_id))
@@ -198,6 +226,8 @@ def generate_hypotheses_route(exception_id: str):
 @require_auth
 def get_resolution(exception_id: str):
     ds = get_datastore()
+    if _visible_case(ds, exception_id) is None:
+        return jsonify({"error": "not_found"}), 404
     existing = ds.get_resolution_draft(exception_id)
     if existing:
         return jsonify(existing)
@@ -208,7 +238,7 @@ def get_resolution(exception_id: str):
 @require_auth
 def generate_resolution(exception_id: str):
     ds = get_datastore()
-    exc = ds.get_exception(exception_id)
+    exc = _visible_case(ds, exception_id)
     if exc is None:
         return jsonify({"error": "not_found"}), 404
 
@@ -244,7 +274,7 @@ def generate_resolution(exception_id: str):
 @require_auth
 def get_audit(exception_id: str):
     ds = get_datastore()
-    if ds.get_exception(exception_id) is None:
+    if _visible_case(ds, exception_id) is None:
         return jsonify({"error": "not_found"}), 404
     return jsonify(ds.get_audit_events(exception_id))
 
@@ -261,7 +291,7 @@ def update_status(exception_id: str):
     ever used as a fallback for the still-supported demo-auth flow, never
     allowed to override a real signed-in identity."""
     ds = get_datastore()
-    exc = ds.get_exception(exception_id)
+    exc = _visible_case(ds, exception_id)
     if exc is None:
         return jsonify({"error": "not_found"}), 404
 
@@ -324,23 +354,75 @@ def update_status(exception_id: str):
 @bp.post("")
 @require_auth
 def create_exception():
-    """Creates an empty case. Optional body fields (invoice_id, vendor_name,
-    purchase_order_id, business_unit, currency) are convenience labels only —
-    every figure the app acts on comes from extraction, never from these."""
+    """Creates an empty case. Optional body fields (title, invoice_id,
+    vendor_name, purchase_order_id, business_unit, currency) are convenience
+    labels only — every figure the app acts on comes from extraction, never
+    from these.
+
+    `title` is what a person calls this case ("Q3 pipe delivery dispute").
+    Optional by design: a case with no title is displayed under its generated
+    exception id exactly as before, and nothing in the product requires one.
+    """
     ds = get_datastore()
     body = request.get_json(silent=True) or {}
     actor = current_user_email(fallback=body.get("actor", "unknown_user"))
     workspace_id = current_workspace_id()
 
-    allowed = {"invoice_id", "vendor_name", "purchase_order_id", "business_unit", "currency"}
+    allowed = {"title", "invoice_id", "vendor_name", "purchase_order_id",
+               "business_unit", "currency"}
     metadata = {k: v for k, v in body.items() if k in allowed and v}
 
     case = ingestion_service.create_case(ds, workspace_id, actor, metadata)
     ds.append_audit_event(case["exception_id"], build_event(
         case["exception_id"], actor=actor, action="case_created",
-        to_status="received", note="Case opened for document upload.",
+        to_status="received",
+        note=(f'Case opened for document upload as "{case["title"]}".' if case.get("title")
+              else "Case opened for document upload."),
     ).model_dump())
     return jsonify(case), 201
+
+
+@bp.patch("/<exception_id>")
+@require_auth
+def rename_exception(exception_id: str):
+    """Set or clear this case's title.
+
+    Separate from PATCH /status because they are different kinds of change and
+    conflating them would put a rename through the approval policy. A title
+    carries no authority: it is a label, it is checked by nothing, and
+    changing it can never move a case toward being paid.
+
+    Send `{"title": null}` or an empty string to go back to displaying the
+    exception id. Renaming IS audited — not because a title matters to a
+    control, but because "the case I approved was called something else" is a
+    question an auditor can ask, and it should have an answer.
+    """
+    ds = get_datastore()
+    exc = _visible_case(ds, exception_id)
+    if exc is None:
+        return jsonify({"error": "not_found"}), 404
+
+    body = request.get_json(silent=True) or {}
+    if "title" not in body:
+        return jsonify({
+            "error": "nothing_to_update",
+            "detail": "Send a 'title' field. Use null or \"\" to clear it.",
+        }), 400
+
+    previous = exc.get("title")
+    title = ingestion_service.normalize_title(body.get("title"))
+    if title == previous:
+        return jsonify(exc)
+
+    updated = ds.update_case_fields(exception_id, {"title": title})
+    actor = current_user_email(fallback=body.get("actor", "unknown_user"))
+    ds.append_audit_event(exception_id, build_event(
+        exception_id, actor=actor, action="case_renamed",
+        note=(f'Renamed from "{previous}" to "{title}".' if previous and title
+              else f'Named "{title}".' if title
+              else f'Title "{previous}" removed; the case now shows its reference.'),
+    ).model_dump())
+    return jsonify(updated)
 
 
 @bp.post("/<exception_id>/documents")
@@ -356,14 +438,15 @@ def upload_documents(exception_id: str):
     independently so one bad PDF never fails the batch.
     """
     ds = get_datastore()
-    exc = ds.get_exception(exception_id)
+    exc = _visible_case(ds, exception_id)
     if exc is None:
         return jsonify({"error": "not_found"}), 404
 
     actor = current_user_email(fallback=request.form.get("actor", "unknown_user"))
+    # No separate cross-workspace check here any more: _visible_case above
+    # already returned None for a case this workspace does not own, and one
+    # check that always runs beats two that can disagree.
     workspace_id = current_workspace_id()
-    if exc.get("workspace_id") and exc["workspace_id"] != workspace_id:
-        return jsonify({"error": "forbidden", "detail": "This case belongs to another workspace."}), 403
 
     files = request.files.getlist("files")
     if not files:
@@ -406,7 +489,7 @@ def upload_documents(exception_id: str):
               f"analyzed={result['analysis'].get('analyzed')}"),
     ).model_dump())
 
-    updated = ds.get_exception(exception_id)
+    updated = _visible_case(ds, exception_id)
     status_code = 207 if rejected else 201
     return jsonify({
         "exception_id": exception_id,
@@ -422,7 +505,7 @@ def upload_documents(exception_id: str):
 def retry_document(exception_id: str, document_id: str):
     """Re-processes one failed document from its already-stored bytes."""
     ds = get_datastore()
-    if ds.get_exception(exception_id) is None:
+    if _visible_case(ds, exception_id) is None:
         return jsonify({"error": "not_found"}), 404
 
     record = asyncio.run(ingestion_service.retry_document(ds, exception_id, document_id))
@@ -444,7 +527,7 @@ def analyze_exception(exception_id: str):
     """Re-runs deterministic matching over whatever documents the case now
     holds. Idempotent, and safe to call after adding evidence at any time."""
     ds = get_datastore()
-    if ds.get_exception(exception_id) is None:
+    if _visible_case(ds, exception_id) is None:
         return jsonify({"error": "not_found"}), 404
 
     analysis = ingestion_service.run_analysis(ds, exception_id)
@@ -453,7 +536,7 @@ def analyze_exception(exception_id: str):
         exception_id, actor=actor, action="analysis_run",
         note=f"analyzed={analysis.get('analyzed')}",
     ).model_dump())
-    return jsonify({"exception": ds.get_exception(exception_id), "analysis": analysis})
+    return jsonify({"exception": _visible_case(ds, exception_id), "analysis": analysis})
 
 
 @bp.get("/<exception_id>/readiness")
@@ -462,7 +545,7 @@ def get_readiness(exception_id: str):
     """What the case has, what it is missing, and whether it can be analyzed —
     so the UI can explain the state instead of guessing at it."""
     ds = get_datastore()
-    if ds.get_exception(exception_id) is None:
+    if _visible_case(ds, exception_id) is None:
         return jsonify({"error": "not_found"}), 404
     return jsonify(ingestion_service.readiness(ds.get_documents(exception_id)))
 
@@ -479,7 +562,7 @@ def get_document_content(exception_id: str, document_id: str):
     URL, and never issued without passing this route's auth first.
     """
     ds = get_datastore()
-    if ds.get_exception(exception_id) is None:
+    if _visible_case(ds, exception_id) is None:
         return jsonify({"error": "not_found"}), 404
 
     record = ds.get_document(document_id)

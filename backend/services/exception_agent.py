@@ -42,7 +42,7 @@ from google.genai import types
 
 from schemas import AIResult, ExceptionReasoning, MatchResult, TrustCheck
 from config import config
-from services import trust_ledger
+from services import seed_context, trust_ledger
 from services.ai_fallback import call_gemini_with_fallback
 
 APP_NAME = "proofaegis-exception-reasoning"
@@ -63,6 +63,13 @@ Your job is judgment and language, not arithmetic:
   gives a clear, specific reason to refine recommended_owner.
 - requires_human_review: always true. This is never used to auto-approve or auto-reject anything.
 
+You may also be given a severity_calibration block. It holds anonymised shapes of past
+classifications from this product's own labelled corpus — exception type, order of magnitude
+of impact, recorded risk level — and exists so your severity scale matches the one this
+product has used before. It is NOT evidence. It says nothing about this vendor, this invoice
+or this workspace. Do not cite it, do not describe it to the reviewer, and do not let it
+change a single number.
+
 Return ONLY the structured fields requested.
 """
 
@@ -78,6 +85,32 @@ def _build_agent() -> LlmAgent:
     )
 
 
+def build_prompt_payload(match_result: MatchResult, document_references: list[dict],
+                          rejection_notice_text: str) -> dict:
+    """Everything the agent is told, assembled in one place.
+
+    Split out of _run_exception_agent so it can be asserted without an ADK
+    runner or a model: what is IN a prompt is a product decision, and the
+    calibration block below is the one part of this application that
+    deliberately crosses a workspace boundary. That deserves a test that reads
+    the payload rather than one that trusts the code path.
+    """
+    payload = {
+        "matching_results": match_result.model_dump(),
+        "document_references": document_references,
+        "rejection_notice_text": rejection_notice_text,
+    }
+    # Severity calibration from the seeded corpus (services/seed_context.py).
+    # Workspace-independent by design: a user whose own queue is empty still
+    # gets a severity scale consistent with every case this product has
+    # classified, which is the whole reason the seeded data is kept.
+    # Omitted entirely when there is no corpus, rather than sent empty.
+    calibration = seed_context.calibration_block()
+    if calibration:
+        payload["severity_calibration"] = calibration
+    return payload
+
+
 async def _run_exception_agent(match_result: MatchResult, document_references: list[dict],
                                 rejection_notice_text: str) -> ExceptionReasoning:
     import json
@@ -88,11 +121,8 @@ async def _run_exception_agent(match_result: MatchResult, document_references: l
     await session_service.create_session(app_name=APP_NAME, user_id=user_id, session_id=session_id)
     runner = Runner(agent=agent, app_name=APP_NAME, session_service=session_service)
 
-    prompt_payload = {
-        "matching_results": match_result.model_dump(),
-        "document_references": document_references,
-        "rejection_notice_text": rejection_notice_text,
-    }
+    prompt_payload = build_prompt_payload(
+        match_result, document_references, rejection_notice_text)
     message = types.Content(role="user", parts=[types.Part(text=json.dumps(prompt_payload))])
     async for _event in runner.run_async(user_id=user_id, session_id=session_id, new_message=message):
         pass

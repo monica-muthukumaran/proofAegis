@@ -241,8 +241,19 @@ export function App() {
     `;
   }
 
+  // The `key` is what makes the route transition work at all. Without it React
+  // reconciles the old view's DOM into the new one, so the animation class is
+  // already on the element and never restarts — the page would swap silently,
+  // which is exactly the behaviour this replaces. Keying on the view name
+  // forces an unmount/remount, and the entrance runs once per navigation.
+  //
+  // The detail view is keyed on the case id too, so moving between two cases
+  // transitions rather than mutating in place — which previously made a
+  // different invoice's figures appear under the heading you were reading.
+  const routeKey = view === "exception-detail" ? `${view}:${selectedExceptionId}` : view;
+
   return html`<div class="app-root">
-    ${pageContent}
+    <div class="route-enter" key=${routeKey}>${pageContent}</div>
     ${tourActive ? html`
       <${GuidedTour}
         stepIndex=${tourStepIndex}

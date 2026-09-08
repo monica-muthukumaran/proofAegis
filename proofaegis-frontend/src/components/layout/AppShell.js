@@ -1,6 +1,7 @@
 import { html, React, useState, useEffect } from "../../lib.js";
 import { useAuth } from "../../services/AuthContext.js";
 import { Icon, Badge } from "../ui/primitives.js";
+import { Logo } from "../brand/Logo.js";
 import { getStoredTheme, setTheme, resolvedTheme, onThemeChange } from "../../lib/theme.js";
 
 // Cycles light -> dark -> system. Three states because "system" is the
@@ -48,13 +49,7 @@ const NAV_GROUPS = [
 export function Sidebar({ activeView, navigate, mobileOpen, setMobileOpen }) {
   const content = html`
     <div class="sidebar-brand">
-      <div class="panel-elevated" style=${{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 9, color: "var(--accent)" }}>
-        <${Icon} name="shield" size=${18} />
-      </div>
-      <div>
-        <div style=${{ fontWeight: 700, fontSize: 15 }}>ProofAegis</div>
-        <div class="text-muted text-small">Evidence command center</div>
-      </div>
+      <${Logo} size=${32} withWordmark=${true} tagline="Evidence command center" id="sidebar" />
     </div>
     <nav class="sidebar-nav">
       ${NAV_GROUPS.map((group, gi) => html`
