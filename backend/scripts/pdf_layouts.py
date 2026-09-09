@@ -101,6 +101,7 @@ LAYOUTS: tuple[Layout, ...] = (
     Layout(
         name="baseline",
         labels={
+            "bank_account": "Bank Account",
             "po_number": "PO Number", "invoice_number": "Invoice Number",
             "receipt_number": "Receipt Number", "vendor": "Vendor",
             "description": "Description", "quantity": "Quantity",
@@ -116,6 +117,7 @@ LAYOUTS: tuple[Layout, ...] = (
     Layout(
         name="erp_export",
         labels={
+            "bank_account": "Remit To A/C",
             "po_number": "P.O. No", "invoice_number": "Invoice No",
             "receipt_number": "GRN No", "vendor": "Supplier",
             "description": "Item", "quantity": "Qty",
@@ -136,6 +138,7 @@ LAYOUTS: tuple[Layout, ...] = (
     Layout(
         name="stacked_columns",
         labels={
+            "bank_account": "Bank Details",
             "po_number": "Purchase Order No", "invoice_number": "Invoice #",
             "receipt_number": "GRN Number", "vendor": "Vendor Name",
             "description": "Line Item", "quantity": "Units",
@@ -154,6 +157,7 @@ LAYOUTS: tuple[Layout, ...] = (
     Layout(
         name="gst_tax_invoice",
         labels={
+            "bank_account": "Bank A/c & IFSC",
             "po_number": "Buyer's Order No", "invoice_number": "Invoice No",
             "receipt_number": "Receipt No", "vendor": "Supplier",
             "description": "Particulars", "quantity": "Qty",
@@ -172,6 +176,7 @@ LAYOUTS: tuple[Layout, ...] = (
     Layout(
         name="legacy_mono",
         labels={
+            "bank_account": "BANK ACCT",
             "po_number": "ORDER REF", "invoice_number": "INVOICE NO",
             "receipt_number": "RECEIPT NO", "vendor": "BILLED BY",
             "description": "DESCRIPTION", "quantity": "QTY",
@@ -197,6 +202,7 @@ LAYOUTS: tuple[Layout, ...] = (
     Layout(
         name="unlabelled_gst",
         labels={
+            "bank_account": "Account",
             "po_number": "Buyer's Order No", "invoice_number": "Invoice No",
             "receipt_number": "Receipt No",
             "description": "Particulars", "quantity": "Qty",

@@ -109,6 +109,165 @@ CASES = {
         "rejection_reason": "No goods receipt or service confirmation on file",
         "include_receipt": False,     # the absence is the exception
     },
+
+    # ---------------------------------------------------------------------
+    # Below: the rest of the exception vocabulary, so a demo can show more
+    # than a price and a quantity. Every key these add is optional and
+    # defaulted in build_case(), so the three cases above render exactly as
+    # they always did.
+    # ---------------------------------------------------------------------
+
+    # The control, and the most important one. Everything agrees and the queue
+    # must say so: a detector that never returns "clean" is not a detector,
+    # it is an alarm.
+    "clean_match_001": {
+        "vendor": "Kerala Packaging Works",
+        "po_number": "PO-2026-00733",
+        "invoice_number": "INV-2026-4401",
+        "description": "Corrugated shipping cartons, 5-ply",
+        "po_quantity": 2000, "po_unit_price": 48,
+        "invoice_quantity": 2000, "invoice_unit_price": 48,
+        "received_quantity": 2000, "receipt_number": "GRN-2026-0140",
+        "include_receipt": True,
+        "include_rejection": False,   # nothing was rejected, because nothing is wrong
+    },
+
+    # Line maths that does not add up: subtotal + tax != the stated total.
+    "tax_total_mismatch_001": {
+        "vendor": "Deccan Logistics Partners",
+        "po_number": "PO-2026-00810",
+        "invoice_number": "INV-2026-4502",
+        "description": "Inbound freight, July consignments",
+        "po_quantity": 1, "po_unit_price": 240000,
+        "invoice_quantity": 1, "invoice_unit_price": 240000,
+        "received_quantity": 1, "receipt_number": "GRN-2026-0151",
+        "include_receipt": True,
+        "invoice_tax": 43200,             # 18% GST on 240,000 = 43,200
+        "invoice_total_override": 312400,  # but the total claims 312,400, not 283,200
+        "rejection_reason": "Invoice total does not equal subtotal plus tax",
+    },
+
+    # The invoice comes from a different legal entity than the order.
+    "vendor_mismatch_001": {
+        "vendor": "Ashwin Software Labs",
+        "invoice_vendor": "Ashwin Technologies (OPC) Pvt. Ltd.",
+        "po_number": "PO-2026-00845",
+        "invoice_number": "INV-2026-4610",
+        "description": "Annual licence renewal, 25 seats",
+        "po_quantity": 25, "po_unit_price": 9000,
+        "invoice_quantity": 25, "invoice_unit_price": 9000,
+        "received_quantity": 25, "receipt_number": "GRN-2026-0163",
+        "include_receipt": True,
+        "rejection_reason": "Invoice raised by an entity that does not match the purchase order",
+    },
+
+    # The coherence guard. An invoice for steel pipes against an order for
+    # office chairs: every number on both pages is real, and comparing them
+    # produces nonsense. The product has to refuse to compute rather than
+    # report a fabricated variance — see services/coherence_service.py, which
+    # exists because this once came back as a confident 211,200 quantity
+    # variance built from 100 pipes minus 12 chairs.
+    "unrelated_documents_001": {
+        "vendor": "Meridian Facility Care",
+        "po_number": "PO-2026-00901",
+        "invoice_number": "INV-2026-4712",
+        "description": "Ergonomic office chairs, mesh back",
+        "invoice_description": "Mild steel pipes, 100mm OD, 6m lengths",
+        "po_quantity": 12, "po_unit_price": 14500,
+        "invoice_quantity": 100, "invoice_unit_price": 2112,
+        "received_quantity": 12, "receipt_number": "GRN-2026-0170",
+        "include_receipt": True,
+        "rejection_reason": "Documents on this case do not describe the same transaction",
+    },
+
+    # --- Cross-case sets. Upload in alphabetical order: a, then b, then c. --
+    # Each of these passes its own three-way match. The finding exists only
+    # because the workspace remembers the others, which is the entire claim
+    # the product is making.
+
+    "duplicate_invoice_a": {
+        "vendor": "Bharat Safety Equipment",
+        "po_number": "PO-2026-00950",
+        "invoice_number": "INV-2026-4890",
+        "description": "Safety helmets, ISI marked",
+        "po_quantity": 400, "po_unit_price": 310,
+        "invoice_quantity": 400, "invoice_unit_price": 310,
+        "received_quantity": 400, "receipt_number": "GRN-2026-0181",
+        "include_receipt": True, "include_rejection": False,
+    },
+    "duplicate_invoice_b": {
+        "vendor": "Bharat Safety Equipment",
+        "po_number": "PO-2026-00950",
+        "invoice_number": "INV-2026-4890",    # the same invoice number, again
+        "description": "Safety helmets, ISI marked",
+        "po_quantity": 400, "po_unit_price": 310,
+        "invoice_quantity": 400, "invoice_unit_price": 310,
+        "received_quantity": 400, "receipt_number": "GRN-2026-0181",
+        "include_receipt": True,
+        "invoice_date": "2026-07-29",         # re-presented four weeks later
+        "rejection_reason": "Invoice number and amount already presented on this purchase order",
+    },
+
+    "payment_details_changed_a": {
+        "vendor": "Sagar Marine Supplies",
+        "po_number": "PO-2026-01002",
+        "invoice_number": "INV-2026-4955",
+        "description": "Marine-grade fasteners, assorted",
+        "po_quantity": 1500, "po_unit_price": 74,
+        "invoice_quantity": 1500, "invoice_unit_price": 74,
+        "received_quantity": 1500, "receipt_number": "GRN-2026-0190",
+        "include_receipt": True, "include_rejection": False,
+        "bank_account": "HDFC0004411 / 50200071234567",
+    },
+    "payment_details_changed_b": {
+        "vendor": "Sagar Marine Supplies",
+        "po_number": "PO-2026-01002",
+        "invoice_number": "INV-2026-5012",
+        "description": "Marine-grade fasteners, assorted",
+        "po_quantity": 1500, "po_unit_price": 74,
+        "invoice_quantity": 1500, "invoice_unit_price": 74,
+        "received_quantity": 1500, "receipt_number": "GRN-2026-0198",
+        "include_receipt": True,
+        "invoice_date": "2026-07-24",
+        "bank_account": "IDIB000K123 / 7712004455321",   # a different bank entirely
+        "rejection_reason": "Vendor bank details differ from the account on the previous invoice",
+    },
+
+    # Three invoices against ONE order. Each bills 90 of 200 units and passes
+    # alone; together they bill 270 against an order for 200.
+    "po_over_billed_a": {
+        "vendor": "Anantha Chemicals",
+        "po_number": "PO-2026-01100",
+        "invoice_number": "INV-2026-5101",
+        "description": "Industrial solvent, 200L drums",
+        "po_quantity": 200, "po_unit_price": 5400,
+        "invoice_quantity": 90, "invoice_unit_price": 5400,
+        "received_quantity": 90, "receipt_number": "GRN-2026-0211",
+        "include_receipt": True, "include_rejection": False,
+    },
+    "po_over_billed_b": {
+        "vendor": "Anantha Chemicals",
+        "po_number": "PO-2026-01100",
+        "invoice_number": "INV-2026-5140",
+        "description": "Industrial solvent, 200L drums",
+        "po_quantity": 200, "po_unit_price": 5400,
+        "invoice_quantity": 90, "invoice_unit_price": 5400,
+        "received_quantity": 90, "receipt_number": "GRN-2026-0225",
+        "include_receipt": True, "include_rejection": False,
+        "invoice_date": "2026-07-16",
+    },
+    "po_over_billed_c": {
+        "vendor": "Anantha Chemicals",
+        "po_number": "PO-2026-01100",
+        "invoice_number": "INV-2026-5188",
+        "description": "Industrial solvent, 200L drums",
+        "po_quantity": 200, "po_unit_price": 5400,
+        "invoice_quantity": 90, "invoice_unit_price": 5400,
+        "received_quantity": 90, "receipt_number": "GRN-2026-0240",
+        "include_receipt": True,
+        "invoice_date": "2026-07-30",
+        "rejection_reason": "Cumulative quantity billed exceeds the quantity ordered",
+    },
 }
 
 INVOICE_DATE = "2026-07-02"
@@ -301,28 +460,56 @@ def build_case(case_id: str, spec: dict, out_dir: str, layout: Layout) -> list[s
     case_dir = os.path.join(out_dir, case_id)
     written = []
     itemized = layout.structure == "table"
+
+    # Optional per-case overrides. Every one of these defaults to the previous
+    # behaviour, so a spec that does not mention them renders as before.
+    #
+    #   invoice_vendor        the invoice is from a different entity than the
+    #                         order (vendor_mismatch)
+    #   invoice_description   the invoice is for different goods than the
+    #                         order (unrelated_documents)
+    #   invoice_tax /         the stated total does not equal subtotal + tax
+    #   invoice_total_override    (tax_total_mismatch)
+    #   bank_account          remittance details, so a change between two
+    #                         invoices is visible (payment_details_changed)
+    #   invoice_date          a case presented later than the default date
+    #   include_rejection     a clean case has nothing to reject
+    invoice_vendor = spec.get("invoice_vendor", spec["vendor"])
+    invoice_description = spec.get("invoice_description", spec["description"])
+    invoice_tax = spec.get("invoice_tax", 0)
+    bank_account = spec.get("bank_account")
+    invoice_date = spec.get("invoice_date", INVOICE_DATE)
+    include_rejection = spec.get("include_rejection", True)
+
     # When the layout prints an unlabelled identity block, the vendor is on
     # the page but under no label; when it does not, the vendor is a labelled
     # row like any other. Never both.
     identity = spec["vendor"] if layout.identity_block else None
+    invoice_identity = invoice_vendor if layout.identity_block else None
 
     po_subtotal = spec["po_quantity"] * spec["po_unit_price"]
     invoice_subtotal = spec["invoice_quantity"] * spec["invoice_unit_price"]
+    # The number the invoice CLAIMS. Normally subtotal + tax; the override is
+    # what makes tax_total_mismatch a real discrepancy on the page rather than
+    # a label saying there is one.
+    invoice_total = spec.get("invoice_total_override", invoice_subtotal + invoice_tax)
 
-    def item_table(quantity, unit_price, amount):
+    def item_table(quantity, unit_price, amount, description=None):
         return (
             [layout.labels["description"], layout.labels["quantity"],
              layout.labels["unit_price"], layout.labels.get("total_amount", "Amount")],
-            [spec["description"], quantity, _money(unit_price, layout), _money(amount, layout)],
+            [description or spec["description"], quantity,
+             _money(unit_price, layout), _money(amount, layout)],
         )
 
-    def totals_for(subtotal):
+    def totals_for(subtotal, tax=0, total=None):
         if not layout.totals_block:
             return None
         return [
             (layout.labels["subtotal"], _money(subtotal, layout)),
-            (layout.labels["tax_amount"], _money(0, layout)),
-            (layout.labels["total_amount"], _money(subtotal, layout)),
+            (layout.labels["tax_amount"], _money(tax, layout)),
+            (layout.labels["total_amount"],
+             _money(subtotal + tax if total is None else total, layout)),
         ]
 
     # --- Purchase order ---
@@ -347,24 +534,29 @@ def build_case(case_id: str, spec: dict, out_dir: str, layout: Layout) -> list[s
     # --- Vendor invoice ---
     invoice_rows = _rows(layout,
                          ("invoice_number", spec["invoice_number"]),
-                         ("invoice_date", INVOICE_DATE))
-    if identity is None:
-        invoice_rows += _rows(layout, ("vendor", spec["vendor"]))
+                         ("invoice_date", invoice_date))
+    if invoice_identity is None:
+        invoice_rows += _rows(layout, ("vendor", invoice_vendor))
     invoice_rows += _rows(layout, ("po_number", spec["po_number"]))
     invoice_table = (item_table(spec["invoice_quantity"], spec["invoice_unit_price"],
-                                invoice_subtotal) if itemized else None)
+                                invoice_subtotal, invoice_description) if itemized else None)
     if not itemized:
         invoice_rows += _rows(layout,
-                              ("description", spec["description"]),
+                              ("description", invoice_description),
                               ("quantity", spec["invoice_quantity"]),
                               ("unit_price", _money(spec["invoice_unit_price"], layout)))
-    invoice_totals = totals_for(invoice_subtotal)
+    # Remittance details go on the invoice as a plain labelled row, which is
+    # where a real one carries them — a bank change is only detectable if the
+    # account is on the page in the first place.
+    if bank_account:
+        invoice_rows += _rows(layout, ("bank_account", bank_account))
+    invoice_totals = totals_for(invoice_subtotal, invoice_tax, invoice_total)
     if invoice_totals is None:
         invoice_rows += _rows(layout,
-                              ("tax_amount", _money(0, layout)),
-                              ("total_amount", _money(invoice_subtotal, layout)))
+                              ("tax_amount", _money(invoice_tax, layout)),
+                              ("total_amount", _money(invoice_total, layout)))
     _write_pdf(os.path.join(case_dir, "vendor_invoice.pdf"), "VENDOR INVOICE",
-               invoice_rows, layout, invoice_table, identity, invoice_totals)
+               invoice_rows, layout, invoice_table, invoice_identity, invoice_totals)
     written.append("vendor_invoice.pdf")
 
     # --- Goods receipt (absent on purpose for missing_receipt_001) ---
@@ -383,6 +575,10 @@ def build_case(case_id: str, spec: dict, out_dir: str, layout: Layout) -> list[s
         written.append("goods_receipt_note.pdf")
 
     # --- Rejection notice ---
+    # Skipped for a clean case. Shipping a rejection notice with a case that
+    # has nothing wrong with it would hand the extractor the answer.
+    if not include_rejection:
+        return written
     rejection_rows = _rows(layout, ("invoice_number", spec["invoice_number"]))
     if identity is None:
         rejection_rows += _rows(layout, ("vendor", spec["vendor"]))
@@ -393,6 +589,98 @@ def build_case(case_id: str, spec: dict, out_dir: str, layout: Layout) -> list[s
                rejection_rows, layout, None, identity)
     written.append("rejection_notice.pdf")
     return written
+
+
+# What each case is FOR. Written beside the PDFs as README.md so the folder
+# explains itself — a directory of 50 unlabelled PDFs is not a demo asset,
+# it is a puzzle.
+#
+# `expect` is what the product should conclude. If uploading a case does not
+# produce this, either the generator or the matcher has drifted, and this file
+# is the record of which was intended.
+CASE_NOTES = {
+    "price_variance_001": ("price_variance",
+        "Unit price 2,650 against an order at 2,400 — 10.4%, outside the 5% tolerance."),
+    "quantity_variance_001": ("quantity_variance",
+        "500 invoiced, 420 received — 19%, outside the 2% tolerance."),
+    "missing_receipt_001": ("missing_goods_receipt",
+        "No goods receipt on file. The ABSENCE is the finding, so this case ships three PDFs."),
+    "clean_match_001": ("no_exception",
+        "Everything agrees. The control: a detector that never says 'clean' is an alarm, "
+        "not a detector. Show this one to prove the queue is not just shouting."),
+    "tax_total_mismatch_001": ("tax_total_mismatch",
+        "Invoice states 312,400 where subtotal 240,000 + tax 43,200 = 283,200. "
+        "A 29,200 overstatement hidden in the arithmetic."),
+    "vendor_mismatch_001": ("vendor_mismatch",
+        "Order to 'Ashwin Software Labs', invoice from 'Ashwin Technologies (OPC) Pvt. Ltd.' — "
+        "a different legal entity with a similar name."),
+    "unrelated_documents_001": ("unrelated_documents",
+        "Invoice for 100 steel pipes against an order for 12 office chairs. The product must "
+        "REFUSE to compute rather than report a fabricated variance."),
+    "duplicate_invoice_a": ("no_exception",
+        "Clean on its own. Upload FIRST — it is the memory the next case is caught against."),
+    "duplicate_invoice_b": ("duplicate_invoice",
+        "Same invoice number and amount, re-presented four weeks later. Upload SECOND."),
+    "payment_details_changed_a": ("no_exception",
+        "Clean. Establishes the vendor's bank account. Upload FIRST."),
+    "payment_details_changed_b": ("payment_details_changed",
+        "Same vendor, different bank entirely. Upload SECOND."),
+    "po_over_billed_a": ("no_exception", "90 of 200 units. Clean alone. Upload FIRST."),
+    "po_over_billed_b": ("no_exception", "90 more. Still clean alone. Upload SECOND."),
+    "po_over_billed_c": ("po_over_billed",
+        "90 more — 270 billed against an order for 200. Upload THIRD."),
+}
+
+# Cases whose finding only exists because the workspace remembers another
+# case. These are the product's actual claim and the ones worth demoing.
+CROSS_CASE = {"duplicate_invoice_b", "payment_details_changed_b", "po_over_billed_c"}
+
+
+def write_readme(out_dir: str, case_ids) -> str:
+    lines = [
+        "# Synthetic demo cases",
+        "",
+        "Generated by `backend/scripts/generate_synthetic_pdfs.py`. Every page is",
+        "fabricated and carries a synthetic-data banner.",
+        "",
+        "Upload a folder through **New case from PDFs**. Nothing here is pre-seeded:",
+        "the app reads the actual bytes, extracts the fields, and computes the finding.",
+        "",
+        "## Single-case findings",
+        "",
+        "Each of these is decided from its own documents. Upload in any order.",
+        "",
+    ]
+    single = [c for c in case_ids if c not in CROSS_CASE
+              and not any(c.startswith(p) for p in ("duplicate_invoice_", "payment_details_changed_", "po_over_billed_"))]
+    for cid in single:
+        expect, why = CASE_NOTES.get(cid, ("?", ""))
+        lines += [f"### `{cid}`", f"- **Expect:** `{expect}`", f"- {why}", ""]
+
+    lines += [
+        "## Cross-case findings",
+        "",
+        "**Order matters.** Each of these passes its own three-way match; the finding",
+        "exists only because the workspace remembers the earlier upload. This is the",
+        "thing a per-invoice system cannot do, so it is the part worth demonstrating.",
+        "",
+    ]
+    for prefix, title in [
+        ("duplicate_invoice_", "Duplicate invoice"),
+        ("payment_details_changed_", "Payment details changed"),
+        ("po_over_billed_", "Purchase order over-billed"),
+    ]:
+        lines.append(f"### {title}")
+        for cid in [c for c in case_ids if c.startswith(prefix)]:
+            expect, why = CASE_NOTES.get(cid, ("?", ""))
+            lines.append(f"- `{cid}` → expect `{expect}` — {why}")
+        lines.append("")
+
+    path = os.path.join(out_dir, "README.md")
+    os.makedirs(out_dir, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(lines))
+    return path
 
 
 def main() -> None:
@@ -413,8 +701,11 @@ def main() -> None:
             written = build_case(case_id, spec, out_dir, layout)
             print(f"{layout.name}/{case_id}: {len(written)} PDFs -> {', '.join(written)}")
 
-    print(f"\nDone. Upload any of these through the app: {args.out}")
+    readme = write_readme(args.out, list(CASES))
+    print(f"\nWrote {readme}")
+    print(f"Done. Upload any of these through the app: {args.out}")
     print("Note: missing_receipt_001 has no goods receipt on purpose — that absence is the finding.")
+    print("Note: the *_a / *_b / *_c sets are cross-case — upload them in that order.")
 
 
 if __name__ == "__main__":
