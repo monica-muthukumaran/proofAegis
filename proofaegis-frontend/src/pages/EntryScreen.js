@@ -1,6 +1,6 @@
 import { html, useState } from "../lib.js";
 import { Icon } from "../components/ui/primitives.js";
-import { Logo } from "../components/brand/Logo.js";
+import { TopNav } from "../components/layout/TopNav.js";
 import { HeroArt } from "../components/brand/HeroArt.js";
 import { useReveal } from "../lib/useReveal.js";
 import { useAuth } from "../services/AuthContext.js";
@@ -27,7 +27,7 @@ const PROOF_POINTS = [
   },
 ];
 
-export function EntryScreen({ onStartTour, onSignIn, onSignUp, onSignedIn }) {
+export function EntryScreen({ onStartTour, onSignIn, onSignUp, onSignedIn, onHome }) {
   // One click into the real workspace. Previously the only ways past this
   // screen were the tour and a password form, and in a live Firebase build
   // the sign-in screen offered no demo path at all — so a first-time visitor
@@ -46,15 +46,9 @@ export function EntryScreen({ onStartTour, onSignIn, onSignUp, onSignedIn }) {
 
   return html`
     <div class="ambient grain" style=${{ minHeight: "100dvh", background: "var(--bg)" }}>
-      <div style=${{ maxWidth: 1180, margin: "0 auto", padding: "clamp(20px,4vw,40px) clamp(16px,4vw,40px) 72px" }}>
+      <${TopNav} variant="public" onHome=${onHome} onSignIn=${onSignIn} onSignUp=${onSignUp} />
+      <div style=${{ maxWidth: 1180, margin: "0 auto", padding: "clamp(28px,5vw,56px) clamp(16px,4vw,40px) 72px" }}>
 
-        <header class="row" style=${{ justifyContent: "space-between", marginBottom: "clamp(32px,6vw,72px)" }}>
-          <${Logo} size=${34} withWordmark=${true} />
-          <div class="row gap-8">
-            <button class="btn btn-ghost btn-sm" onClick=${onSignIn}>Sign in</button>
-            <button class="btn btn-secondary btn-sm" onClick=${onSignUp}>Create account</button>
-          </div>
-        </header>
 
         <section class="hero-grid" style=${{ marginBottom: "clamp(48px,8vw,96px)" }}>
           <div class="stack gap-24">

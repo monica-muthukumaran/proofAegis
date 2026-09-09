@@ -2,8 +2,9 @@ import { html, useState } from "../lib.js";
 import { useAuth } from "../services/AuthContext.js";
 import { Icon } from "../components/ui/primitives.js";
 import { Logo } from "../components/brand/Logo.js";
+import { TopNav } from "../components/layout/TopNav.js";
 
-export function LoginScreen({ onBackToTour, onSignedIn, onCreateAccount }) {
+export function LoginScreen({ onBackToTour, onSignedIn, onCreateAccount, onHome }) {
   const { signIn, continueAsDemo, resetPassword, loading, error, demoCredentials, demoAvailable, isFirebaseMode } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,7 +36,9 @@ export function LoginScreen({ onBackToTour, onSignedIn, onCreateAccount }) {
   };
 
   return html`
-    <div class="centered-screen ambient">
+    <div class="auth-screen ambient">
+      <${TopNav} variant="public" onHome=${onHome} />
+      <div class="centered-screen" style=${{ minHeight: "auto", flex: 1 }}>
       <div class="panel stack gap-24" style=${{ width: 440, maxWidth: "94vw", padding: 32 }}>
         <div class="stack gap-8">
           <span class="brand-eyebrow"><${Logo} size=${18} id="auth" />ProofAegis</span>
@@ -86,9 +89,21 @@ export function LoginScreen({ onBackToTour, onSignedIn, onCreateAccount }) {
           <div>Password: ${demoCredentials.password}</div>
         </div>` : null}
 
-        <button class="btn btn-ghost btn-block" onClick=${onBackToTour}>
-          <${Icon} name="arrowLeft" size=${15} /> Back to guided tour
-        </button>
+        <!-- Two ways out, and the first one is the fix for a dead end: this
+             screen previously offered only "Back to guided tour" (which starts
+             the tour) and "Create an account" (the other auth screen), so a
+             visitor who clicked Sign in could not get back to the landing
+             page at all. The nav brand above does it too; this is the
+             in-context affordance for someone who has scrolled the card. -->
+        <div class="row gap-8" style=${{ justifyContent: "center", flexWrap: "wrap" }}>
+          <button class="btn btn-ghost btn-sm" onClick=${onHome}>
+            <${Icon} name="arrowLeft" size=${15} /> Back to home
+          </button>
+          <button class="btn btn-ghost btn-sm" onClick=${onBackToTour}>
+            <${Icon} name="play" size=${15} /> Guided tour
+          </button>
+        </div>
+        </div>
       </div>
     </div>
   `;

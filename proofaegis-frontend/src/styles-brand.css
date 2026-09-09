@@ -209,9 +209,26 @@ tbody tr.row-clickable:hover{box-shadow:inset 3px 0 0 var(--brand)}
 
 /* Two soft radial washes over the page ground. Fixed attachment so they do
    not slide under scrolling content and turn into a moving background. */
-.ambient{position:relative;isolation:isolate}
+.ambient{
+  position:relative;
+  isolation:isolate;
+  /* `clip`, not `hidden`. Both contain the decorative layers below, but
+     `hidden` creates a scroll container, and a scroll container swallows
+     `position: sticky` on the nav inside — it would stick to this box instead
+     of the viewport. `clip` contains without scrolling, so sticky still
+     resolves against the viewport. */
+  overflow-x:clip;
+}
 .ambient::before{
-  content:"";position:absolute;inset:-20% -10% auto -10%;height:min(620px,80vh);
+  content:"";
+  /* Horizontal inset is 0, and that is a bug fix rather than a tidy-up. This
+     was `-10%` each side so the wash bled past the edges, which made the
+     pseudo-element 120% of the page width and added ~270px of real horizontal
+     overflow: the document scrolled sideways, and on the auth screens that
+     pushed the brand mark clean off the left edge. The radial gradients fade
+     to transparent well before their own bounds, so they never needed the
+     bleed to avoid looking cut off. */
+  position:absolute;inset:-20% 0 auto 0;height:min(620px,80vh);
   z-index:-1;pointer-events:none;
   background:
     radial-gradient(58% 46% at 22% 18%,var(--brand-wash) 0%,transparent 62%),
@@ -597,3 +614,150 @@ tbody tr.row-clickable:hover{box-shadow:inset 3px 0 0 var(--brand)}
   .dev-portrait{width:64px;height:64px}
   .dev-portrait-initials{font-size:1.35rem}
 }
+
+/* ==========================================================================
+   Top navigation
+   ==========================================================================
+   One bar on every screen, replacing the left sidebar and the thin topbar
+   that sat beside it. styles.css still carries the old `.sidebar` and
+   `.app-shell{display:flex}` rules; they are overridden here rather than
+   deleted, because that file is one long line per section and a palette-level
+   edit there is how the theme layers were kept free of !important.
+   ========================================================================== */
+.app-shell{display:block;min-height:100dvh}
+.main-content{min-width:0;flex:none}
+/* The sidebar's 248px column is gone, so the content is no longer boxed to
+   1480px minus a rail. Tables and the evidence graph were the two screens
+   actually short of room and both now get the full width. */
+.page-body{max-width:1600px;margin:0 auto}
+.sidebar-container,.sidebar,.sidebar-backdrop{display:none!important}
+
+.topnav{
+  position:sticky;top:0;z-index:30;
+  background:color-mix(in srgb,var(--surface) 82%,transparent);
+  backdrop-filter:saturate(180%) blur(14px);
+  -webkit-backdrop-filter:saturate(180%) blur(14px);
+  border-bottom:1px solid var(--line);
+}
+@supports not (backdrop-filter:blur(1px)){ .topnav{background:var(--surface)} }
+.topnav-inner{
+  display:flex;align-items:center;gap:8px;
+  max-width:1600px;margin:0 auto;
+  min-height:62px;
+  padding:8px clamp(14px,3vw,28px);
+}
+.topnav-public .topnav-inner{min-height:66px}
+
+/* The brand is a button because it navigates. It must not look like one. */
+.nav-brand{
+  appearance:none;background:none;border:0;padding:4px 6px;margin-left:-6px;
+  border-radius:var(--radius-sm);
+  cursor:pointer;flex:none;
+  transition:opacity var(--dur-1) var(--ease-std),transform var(--dur-1) var(--ease-out);
+}
+.nav-brand:hover{opacity:.82}
+.nav-brand:active{transform:scale(.98)}
+
+.nav-links{display:flex;align-items:center;gap:2px;margin-left:10px}
+.nav-link{
+  appearance:none;background:none;border:0;
+  display:inline-flex;align-items:center;gap:7px;
+  min-height:38px;padding:8px 11px;
+  border-radius:var(--radius-sm);
+  color:var(--muted);font:inherit;font-size:var(--step-0);font-weight:600;
+  white-space:nowrap;cursor:pointer;
+  transition:background var(--dur-1) var(--ease-std),color var(--dur-1) var(--ease-std);
+}
+.nav-link:hover{background:var(--panel-elevated);color:var(--ink)}
+/* Active is brand-tinted, matching what the sidebar rail used to say. Brand
+   is chrome — it never reports on a case — so this stays inside the rule the
+   theme sets. */
+.nav-link.active{background:var(--brand-soft);color:var(--brand);font-weight:700}
+.nav-caret{opacity:.65;transition:transform var(--dur-2) var(--ease-out)}
+[aria-expanded="true"] .nav-caret{transform:rotate(180deg)}
+
+/* --- Dropdowns --- */
+.nav-menu-wrap{position:relative;display:inline-flex}
+.nav-dropdown{
+  position:absolute;top:calc(100% + 7px);left:0;z-index:40;
+  min-width:216px;padding:6px;
+  background:var(--surface);
+  border:1px solid var(--border-strong);
+  border-radius:var(--radius-md);
+  box-shadow:var(--shadow-elevated);
+  animation:pop-in var(--dur-2) var(--ease-out) both;
+}
+.nav-dropdown-right{left:auto;right:0}
+.nav-dropdown-head{
+  padding:8px 10px;
+  color:var(--muted);font-size:var(--step--1);
+  word-break:break-all;
+}
+.nav-dropdown-item{
+  appearance:none;background:none;border:0;
+  display:flex;align-items:center;gap:9px;
+  width:100%;padding:9px 10px;
+  border-radius:var(--radius-sm);
+  color:var(--ink);font:inherit;font-size:var(--step-0);
+  text-align:left;cursor:pointer;
+  transition:background var(--dur-1) var(--ease-std),color var(--dur-1) var(--ease-std);
+}
+.nav-dropdown-item:hover{background:var(--panel-elevated)}
+.nav-dropdown-item.active{color:var(--brand);font-weight:700;background:var(--brand-soft)}
+/* The About-the-developer row is a link, not a menu action, so it does not
+   take the hover fill that would imply it behaves like its neighbours. */
+.nav-dropdown-static{cursor:default}
+.nav-dropdown-static:hover{background:none}
+
+/* --- Mobile --- */
+.nav-burger{display:none!important}
+.nav-mobile{
+  display:none;
+  border-top:1px solid var(--line);
+  padding:8px clamp(14px,3vw,28px) 14px;
+  background:var(--surface);
+  animation:rise-sm var(--dur-2) var(--ease-out) both;
+}
+.nav-mobile-item{
+  appearance:none;background:none;border:0;
+  display:flex;align-items:center;gap:10px;
+  width:100%;min-height:44px;padding:10px 12px;
+  border-radius:var(--radius-sm);
+  color:var(--ink);font:inherit;font-size:var(--step-1);font-weight:600;
+  text-align:left;cursor:pointer;
+}
+.nav-mobile-item:hover{background:var(--panel-elevated)}
+.nav-mobile-item.active{background:var(--brand-soft);color:var(--brand);font-weight:700}
+.nav-mobile-label{
+  padding:10px 12px 4px;color:var(--muted);
+  font-size:var(--step--2);font-weight:700;
+  letter-spacing:var(--track-wide);text-transform:uppercase;
+}
+
+/* Collapse in the order things stop earning their width. */
+@media (max-width:1180px){ .tour-label{display:none} }
+@media (max-width:1080px){ .theme-label{display:none} }
+@media (max-width:940px){
+  .nav-links{display:none}
+  .nav-burger{display:inline-flex!important}
+  .nav-mobile{display:block}
+}
+@media (max-width:640px){
+  .brand-name{font-size:15px!important}
+  .brand-tag{display:none}
+  .account-label{display:none}
+  .topnav-inner{gap:6px;padding:8px 12px}
+}
+
+/* The auth screens now carry the shared nav above the card, so the page is a
+   column (nav, then centred card) rather than a single centring box. */
+.auth-screen{min-height:100dvh;display:flex;flex-direction:column;background:var(--bg)}
+
+/* Six controls do not fit beside a wordmark on a phone. Below the breakpoint
+   where the nav links collapse, the tour trigger and account menu leave the
+   bar too — they reappear inside the mobile panel, which is the only reason
+   hiding them here is safe. */
+@media (max-width:940px){
+  .nav-wide-only{display:none!important}
+}
+.nav-mobile-divider{height:1px;background:var(--line);margin:8px 12px}

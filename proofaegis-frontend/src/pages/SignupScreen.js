@@ -2,8 +2,9 @@ import { html, useState } from "../lib.js";
 import { useAuth } from "../services/AuthContext.js";
 import { Icon } from "../components/ui/primitives.js";
 import { Logo } from "../components/brand/Logo.js";
+import { TopNav } from "../components/layout/TopNav.js";
 
-export function SignupScreen({ onBackToLogin, onSignedUp }) {
+export function SignupScreen({ onBackToLogin, onSignedUp, onHome }) {
   const { signUp, loading, error, isFirebaseMode } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -31,7 +32,9 @@ export function SignupScreen({ onBackToLogin, onSignedUp }) {
   };
 
   return html`
-    <div class="centered-screen ambient">
+    <div class="auth-screen ambient">
+      <${TopNav} variant="public" onHome=${onHome} />
+      <div class="centered-screen" style=${{ minHeight: "auto", flex: 1 }}>
       <div class="panel stack gap-24" style=${{ width: 440, maxWidth: "94vw", padding: 32 }}>
         <div class="stack gap-8">
           <span class="brand-eyebrow"><${Logo} size=${18} id="auth" />ProofAegis</span>
@@ -65,9 +68,13 @@ export function SignupScreen({ onBackToLogin, onSignedUp }) {
         </form>
 
         <p class="text-muted text-small">${isFirebaseMode ? "Your account is secured by Firebase Authentication." : "Demo mode stores this account only for the current browser session."}</p>
-        <button class="btn btn-ghost btn-block" onClick=${onBackToLogin}>
-          <${Icon} name="arrowLeft" size=${15} /> Back to sign in
-        </button>
+        <div class="row gap-8" style=${{ justifyContent: "center", flexWrap: "wrap" }}>
+          <button class="btn btn-ghost btn-sm" onClick=${onHome}>
+            <${Icon} name="arrowLeft" size=${15} /> Back to home
+          </button>
+          <button class="btn btn-ghost btn-sm" onClick=${onBackToLogin}>Back to sign in</button>
+        </div>
+        </div>
       </div>
     </div>
   `;

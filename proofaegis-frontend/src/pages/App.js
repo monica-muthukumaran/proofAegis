@@ -12,7 +12,7 @@ import { Analytics } from "../pages/Analytics.js";
 import { Invoices } from "../pages/Invoices.js";
 import { PurchaseOrders } from "../pages/PurchaseOrders.js";
 import { Vendors } from "../pages/Vendors.js";
-import { AppShell } from "../components/layout/AppShell.js";
+import { AppShell } from "../components/layout/TopNav.js";
 import { GuidedTour } from "../components/tour/GuidedTour.js";
 import { TOUR_STEPS, TOUR_EXCEPTION_ID } from "../components/tour/tourSteps.js";
 import { CreateExceptionModal } from "../components/exceptions/CreateExceptionModal.js";
@@ -28,15 +28,6 @@ const ROUTED_VIEWS = [
   "dashboard", "exceptions", "invoices", "purchase-orders", "vendors",
   "analytics", "settings", "login", "signup",
 ];
-
-// The registers are records, not work items, so the topbar names them
-// plainly. "Exception" stays singular on a detail view because the title
-// describes what is open, not where you are.
-const VIEW_TITLES = {
-  dashboard: "Dashboard", exceptions: "Exception Queue", "exception-detail": "Exception",
-  invoices: "Invoices", "purchase-orders": "Purchase Orders", vendors: "Vendors",
-  analytics: "Analytics", settings: "Settings",
-};
 
 function routeFromLocation() {
   const parts = window.location.pathname.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
@@ -73,6 +64,24 @@ export function App() {
   // single request and this reuses the same shape.
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteCases, setPaletteCases] = useState([]);
+
+  // "Home" is not one page. Signed out it is the landing page — the pitch.
+  // Signed in it is the dashboard, because returning a working analyst to a
+  // marketing page is never what they meant by "home". The brand mark in the
+  // nav calls this, so one control does the right thing on both sides of
+  // sign-in.
+  const goHome = () => {
+    setSelectedExceptionId(null);
+    setQueuePrefill("");
+    setView(user || guestPreview ? "dashboard" : "entry");
+  };
+
+  // The same rule applied to the URL: a signed-in visitor who opens "/" is
+  // sent to their dashboard rather than being shown the pitch for a product
+  // they have already bought. Mirrors the protected-view guard below.
+  useEffect(() => {
+    if (view === "entry" && (user || guestPreview)) setView("dashboard");
+  }, [view, user, guestPreview]);
 
   // Route guard: protected views require either a signed-in user or an
   // active/just-finished guided-tour guest preview.
@@ -184,24 +193,24 @@ export function App() {
   if (view === "entry") {
     pageContent = html`<${EntryScreen} onStartTour=${startTour} onSignIn=${() => setView("login")} onSignUp=${() => setView("signup")} onSignedIn=${() => { setGuestPreview(false); setView("dashboard"); }} />`;
   } else if (view === "login") {
-    pageContent = html`<${LoginScreen} onBackToTour=${startTour} onCreateAccount=${() => setView("signup")} onSignedIn=${() => { setGuestPreview(false); setView("dashboard"); }} />`;
+    pageContent = html`<${LoginScreen} onBackToTour=${startTour} onHome=${goHome} onCreateAccount=${() => setView("signup")} onSignedIn=${() => { setGuestPreview(false); setView("dashboard"); }} />`;
   } else if (view === "signup") {
-    pageContent = html`<${SignupScreen} onBackToLogin=${() => setView("login")} onSignedUp=${() => { setGuestPreview(false); setView("dashboard"); }} />`;
+    pageContent = html`<${SignupScreen} onBackToLogin=${() => setView("login")} onHome=${goHome} onSignedUp=${() => { setGuestPreview(false); setView("dashboard"); }} />`;
   } else if (view === "dashboard") {
     pageContent = html`
-      <${AppShell} activeView="dashboard" navigate=${navigate} title="Dashboard" onStartTour=${startTour}>
+      <${AppShell} onHome=${goHome} activeView="dashboard" navigate=${navigate} onStartTour=${startTour}>
         <${Dashboard} openException=${openException} onCreateException=${() => setCreateModalOpen(true)} onStartTour=${startTour} navigateToQueue=${() => navigate("exceptions")} />
       <//>
     `;
   } else if (view === "exceptions") {
     pageContent = html`
-      <${AppShell} activeView="exceptions" navigate=${navigate} title="Exception Queue" onStartTour=${startTour}>
+      <${AppShell} onHome=${goHome} activeView="exceptions" navigate=${navigate} onStartTour=${startTour}>
         <${ExceptionQueue} openException=${openException} initialQuery=${queuePrefill} />
       <//>
     `;
   } else if (view === "exception-detail") {
     pageContent = html`
-      <${AppShell} activeView="exceptions" navigate=${navigate} title="Exception" onStartTour=${startTour}>
+      <${AppShell} onHome=${goHome} activeView="exceptions" navigate=${navigate} onStartTour=${startTour}>
         <${ExceptionDetail}
           exceptionId=${selectedExceptionId || TOUR_EXCEPTION_ID}
           onBack=${() => (tourActive ? null : navigate("exceptions"))}
@@ -211,31 +220,31 @@ export function App() {
     `;
   } else if (view === "invoices") {
     pageContent = html`
-      <${AppShell} activeView="invoices" navigate=${navigate} title=${VIEW_TITLES.invoices} onStartTour=${startTour}>
+      <${AppShell} onHome=${goHome} activeView="invoices" navigate=${navigate} onStartTour=${startTour}>
         <${Invoices} openException=${openException} />
       <//>
     `;
   } else if (view === "purchase-orders") {
     pageContent = html`
-      <${AppShell} activeView="purchase-orders" navigate=${navigate} title=${VIEW_TITLES["purchase-orders"]} onStartTour=${startTour}>
+      <${AppShell} onHome=${goHome} activeView="purchase-orders" navigate=${navigate} onStartTour=${startTour}>
         <${PurchaseOrders} openException=${openException} />
       <//>
     `;
   } else if (view === "vendors") {
     pageContent = html`
-      <${AppShell} activeView="vendors" navigate=${navigate} title=${VIEW_TITLES.vendors} onStartTour=${startTour}>
+      <${AppShell} onHome=${goHome} activeView="vendors" navigate=${navigate} onStartTour=${startTour}>
         <${Vendors} onViewExceptions=${openVendorExceptions} />
       <//>
     `;
   } else if (view === "analytics") {
     pageContent = html`
-      <${AppShell} activeView="analytics" navigate=${navigate} title="Analytics" onStartTour=${startTour}>
+      <${AppShell} onHome=${goHome} activeView="analytics" navigate=${navigate} onStartTour=${startTour}>
         <${Analytics} />
       <//>
     `;
   } else if (view === "settings") {
     pageContent = html`
-      <${AppShell} activeView="settings" navigate=${navigate} title="Settings" onStartTour=${startTour}>
+      <${AppShell} onHome=${goHome} activeView="settings" navigate=${navigate} onStartTour=${startTour}>
         <${Settings} />
       <//>
     `;

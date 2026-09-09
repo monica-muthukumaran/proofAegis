@@ -1,15 +1,17 @@
 // The ProofAegis mark.
 //
-// The product had no logo — the sidebar, the entry screen and the sign-in
-// card all used the generic `shield` icon from the feather set, which is the
-// same glyph the ErrorState uses. A product whose front door wears a stock
-// icon reads as a template.
+// REDESIGNED. The first mark was a shield with a small page floating inside
+// it — two separate objects, one containing the other, which is a lot of
+// detail to carry at 16px and says "security product that has documents".
 //
-// The mark is a shield (the "aegis") whose interior is a page with a rule
-// struck through it and a mark of assent beside it — the product's actual
-// claim, that a document was checked and the check is recorded. It is drawn
-// on a 24-unit grid so it sits on the same optical size as the icon set it
-// appears beside.
+// This one collapses the two into a single shape: the page IS the shield. A
+// document with a folded corner, whose base comes to a protective point. One
+// silhouette, readable at favicon size, and it states the actual product
+// rather than a category — evidence that defends a decision.
+//
+// The fold is the tell. It is what stops the silhouette reading as a generic
+// shield, and it is the only piece of the mark that costs nothing at small
+// sizes because it sits on the outline rather than inside it.
 import { html } from "../../lib.js";
 
 export function Logo({ size = 32, withWordmark = false, tagline = null, id = "pa" }) {
@@ -21,17 +23,24 @@ export function Logo({ size = 32, withWordmark = false, tagline = null, id = "pa
     <svg class="brand-mark" width=${size} height=${size} viewBox="0 0 24 24"
       fill="none" role="img" aria-label="ProofAegis">
       <defs>
-        <linearGradient id=${gid} x1="4" y1="1" x2="20" y2="23" gradientUnits="userSpaceOnUse">
+        <linearGradient id=${gid} x1="4" y1="2" x2="20" y2="23" gradientUnits="userSpaceOnUse">
           <stop stop-color="var(--brand-grad-a)" />
           <stop offset="1" stop-color="var(--brand-grad-b)" />
         </linearGradient>
       </defs>
-      <path d="M12 1.6 3.4 4.7v6.6c0 5.6 4.3 9.4 8.6 11.1 4.3-1.7 8.6-5.5 8.6-11.1V4.7Z"
+
+      <!-- The page-shield: square shoulders, folded top-right corner, and a
+           base that tapers to a point instead of closing flat. -->
+      <path
+        d="M4 2.6 H13.4 L20 9.2 V13.4 C20 18.4 16.4 21.6 12 23.1 C7.6 21.6 4 18.4 4 13.4 Z"
         fill=${`url(#${gid})`} />
-      <path d="M9.1 7.6h4.4l2.4 2.4v6.4H9.1Z" fill="#fff" fill-opacity=".92" />
-      <path d="M13.5 7.6v2.4h2.4" fill="#fff" fill-opacity=".55" />
-      <path d="M10.6 12.4h3.8M10.6 14.5h2.4" stroke="var(--brand-grad-a)"
-        stroke-width="1.1" stroke-linecap="round" opacity=".75" />
+
+      <!-- The fold. Lighter rather than white so the mark stays one object. -->
+      <path d="M13.4 2.6 V9.2 H20 Z" fill="#fff" fill-opacity=".38" />
+
+      <!-- Two ruled lines: this is a record, not a badge. -->
+      <path d="M8 12.9 H15.4 M8 16.1 H12.4" stroke="#fff" stroke-width="1.7"
+        stroke-linecap="round" opacity=".95" />
     </svg>
   `;
 
