@@ -97,6 +97,22 @@ cd backend && ./venv/Scripts/python.exe scripts/generate_synthetic_pdfs.py
 Put that folder somewhere you can reach in **two clicks** from the file picker.
 Fumbling in a file dialog costs ten seconds you do not have.
 
+The generator now writes fourteen cases, not three, and drops a `README.md`
+beside them naming the expected finding for each. The ones worth knowing about:
+
+| Folder | Shows |
+|---|---|
+| `price_variance_001` | the hero case — a 10.4% overcharge |
+| `clean_match_001` | the control: everything agrees, and the queue says so |
+| `unrelated_documents_001` | the product refusing to compute rather than inventing a variance |
+| `duplicate_invoice_a` → `_b` | cross-case. Upload in that order |
+| `payment_details_changed_a` → `_b` | cross-case. Same vendor, different bank |
+| `po_over_billed_a` → `_b` → `_c` | cross-case. 3 × 90 units against an order for 200 |
+
+The `_a`/`_b`/`_c` sets each pass their own three-way match. The finding only
+exists because the workspace remembers the earlier upload, which is the whole
+claim — so if you demo one cross-case thing, demo one of these.
+
 ---
 
 ## 3. Pre-flight — 20 minutes before
@@ -358,13 +374,13 @@ Rehearse this until it is muscle memory.
  8. Evidence graph tab                            (0:52)
  9. Hover the Finding node → chain lights up
 10. Click a Document node → source detail
-11. Sidebar → Exceptions                          (1:00)
+11. Top nav → Exceptions                          (1:00)
 12. Open a payment_details_changed case
 13. Match tab → cross-case banner                 (1:10)
 14. (optional) Investigate tab                    (1:30)
 15. Command palette Ctrl+K → "EXC-2026-0001"      (1:45)
 16. Match tab → scroll to trust row               (1:50)
-17. Sidebar → Analytics                           (2:05)
+17. Top nav → Analytics                           (2:05)
 18. Scroll to Disagreement ledger
 19. Scroll to Measured accuracy                   (2:12)
 20. Scroll back to the top — cross-case panel     (2:20)
