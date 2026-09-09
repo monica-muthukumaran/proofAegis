@@ -103,7 +103,11 @@ export function ProgressBar({ value = 0, tone = "accent", label }) {
   `;
 }
 
-export function Modal({ open, onClose, children, wide = false }) {
+// `label` names the dialog for assistive tech. It used to be the hardcoded
+// string "Dialog" for every caller, which tells a screen-reader user that
+// something opened and nothing about what — on a screen that may have several
+// different modals, that is the difference between orientation and a guess.
+export function Modal({ open, onClose, children, wide = false, label = "Dialog" }) {
   const modalRef = useRef(null);
   useEffect(() => {
     if (!open) return undefined;
@@ -115,7 +119,7 @@ export function Modal({ open, onClose, children, wide = false }) {
   if (!open) return null;
   return html`
     <div class="overlay-backdrop" onClick=${(e) => { if (e.target === e.currentTarget) onClose && onClose(); }} role="presentation">
-      <div class="modal-center" style=${wide ? { width: 640 } : {}} role="dialog" aria-modal="true" aria-label="Dialog" tabIndex="-1" ref=${modalRef}>${children}</div>
+      <div class="modal-center" style=${wide ? { width: 640 } : {}} role="dialog" aria-modal="true" aria-label=${label} tabIndex="-1" ref=${modalRef}>${children}</div>
     </div>
   `;
 }

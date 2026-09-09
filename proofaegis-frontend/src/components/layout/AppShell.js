@@ -2,6 +2,7 @@ import { html, React, useState, useEffect } from "../../lib.js";
 import { useAuth } from "../../services/AuthContext.js";
 import { Icon, Badge } from "../ui/primitives.js";
 import { Logo } from "../brand/Logo.js";
+import { AboutDeveloperLink } from "../about/AboutDeveloper.js";
 import { getStoredTheme, setTheme, resolvedTheme, onThemeChange } from "../../lib/theme.js";
 
 // Cycles light -> dark -> system. Three states because "system" is the
@@ -73,6 +74,9 @@ export function Sidebar({ activeView, navigate, mobileOpen, setMobileOpen }) {
     <div class="panel-elevated stack gap-4" style=${{ padding: "12px 14px" }} data-tour="product-introduction">
       <div class="text-small" style=${{ fontWeight: 600 }}>Demo Finance Workspace</div>
       <${Badge} tone="accent">Synthetic workspace<//>
+    </div>
+    <div style=${{ padding: "10px 14px 2px" }}>
+      <${AboutDeveloperLink} />
     </div>
   `;
 

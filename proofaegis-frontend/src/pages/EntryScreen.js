@@ -4,6 +4,7 @@ import { Logo } from "../components/brand/Logo.js";
 import { HeroArt } from "../components/brand/HeroArt.js";
 import { useReveal } from "../lib/useReveal.js";
 import { useAuth } from "../services/AuthContext.js";
+import { AboutDeveloperLink } from "../components/about/AboutDeveloper.js";
 
 // The three claims under the hero. Kept to facts the product can actually
 // demonstrate two clicks later — a landing page that promises something the
@@ -164,9 +165,11 @@ export function EntryScreen({ onStartTour, onSignIn, onSignUp, onSignedIn }) {
           </div>
         </section>
 
-        <p class="text-muted text-small" style=${{ textAlign: "center", marginTop: 40 }}>
-          Demo data is synthetic and not for financial processing.
-        </p>
+        <footer class="row gap-12" style=${{ justifyContent: "center", flexWrap: "wrap", marginTop: 40 }}>
+          <span class="text-muted text-small">Demo data is synthetic and not for financial processing.</span>
+          <span class="text-muted text-small" aria-hidden="true">·</span>
+          <${AboutDeveloperLink} />
+        </footer>
       </div>
     </div>
   `;

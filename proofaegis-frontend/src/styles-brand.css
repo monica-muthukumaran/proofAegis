@@ -513,3 +513,87 @@ tbody tr.row-clickable:hover{box-shadow:inset 3px 0 0 var(--brand)}
   display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;justify-content:flex-end;
 }
 .agent-routing-loc{font-size:var(--step--1);font-weight:400;color:var(--muted)}
+
+/* ==========================================================================
+   About the developer
+   ==========================================================================
+   A quiet credit line and the card it opens. The trigger is styled as text
+   rather than as a button on purpose: it is a footnote, and giving it button
+   chrome would put it in visual competition with "Start guided tour" on the
+   same screen. It keeps a real focus ring and a real hit target, because
+   looking like text is not a reason to stop behaving like a control.
+   ========================================================================== */
+.about-dev-trigger{
+  appearance:none;
+  background:none;
+  border:0;
+  padding:2px 0;
+  color:var(--muted);
+  font:inherit;
+  font-size:var(--step--1);
+  text-decoration:underline;
+  text-decoration-color:color-mix(in srgb,var(--muted) 40%,transparent);
+  text-underline-offset:3px;
+  cursor:pointer;
+  transition:color var(--dur-1) var(--ease-std),text-decoration-color var(--dur-1) var(--ease-std);
+}
+.about-dev-trigger:hover{
+  color:var(--brand);
+  text-decoration-color:var(--brand);
+}
+
+.dev-card{position:relative;display:flex;flex-direction:column;gap:18px}
+.dev-close{position:absolute;top:-6px;right:-6px}
+
+.dev-head{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.dev-portrait{
+  width:84px;height:84px;flex:none;
+  border-radius:50%;
+  object-fit:cover;
+  border:1px solid var(--line);
+  background:var(--panel-elevated);
+  box-shadow:var(--shadow-panel);
+}
+.dev-portrait-initials{
+  display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,var(--brand-grad-a),var(--brand-grad-b));
+  color:#fff;
+  border-color:transparent;
+  font-size:1.75rem;font-weight:700;letter-spacing:.02em;
+}
+.dev-name{font-size:var(--step-4);letter-spacing:var(--track-snug);margin:0}
+.dev-title{color:var(--muted);font-size:var(--step-1);margin:0;line-height:1.4}
+
+.dev-note{
+  margin:0;
+  padding-left:13px;
+  border-left:2px solid var(--brand-line);
+  color:var(--muted);
+  font-size:var(--step-1);
+  line-height:1.55;
+}
+
+.dev-contact{
+  display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+  flex-wrap:wrap;
+  padding-top:14px;
+  border-top:1px solid var(--line);
+}
+.dev-contact-label{
+  color:var(--muted);
+  font-size:var(--step--2);font-weight:700;
+  letter-spacing:var(--track-wide);text-transform:uppercase;
+}
+.dev-contact-value{
+  color:var(--brand);
+  font-size:var(--step-0);
+  text-decoration:none;
+  word-break:break-all;
+}
+.dev-contact-value:hover{text-decoration:underline}
+
+@media (max-width:420px){
+  .dev-head{gap:14px}
+  .dev-portrait{width:64px;height:64px}
+  .dev-portrait-initials{font-size:1.35rem}
+}
