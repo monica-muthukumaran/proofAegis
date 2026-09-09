@@ -140,7 +140,7 @@ export function CreateExceptionModal({ open, onClose, onOpenExisting }) {
   const canAnalyze = analysis && analysis.readiness && analysis.readiness.can_analyze;
 
   return html`
-    <${Modal} open=${open} onClose=${onClose} wide=${true}>
+    <${Modal} open=${open} onClose=${onClose} wide=${true} label="New case from PDFs">
       <div class="stack gap-16">
         <div class="row" style=${{ justifyContent: "space-between" }}>
           <h3 class="text-section-title">New exception case</h3>

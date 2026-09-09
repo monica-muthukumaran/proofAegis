@@ -107,11 +107,29 @@ export function CommandPalette({ open, onClose, exceptions, onNavigate, onOpenEx
     } else if (event.key === "Enter") {
       event.preventDefault();
       run(results[cursor]);
-    } else if (event.key === "Escape") {
-      event.preventDefault();
-      onClose();
     }
+    // Escape is deliberately NOT handled here — see the document-level
+    // listener below.
   };
+
+  // Escape closes the palette from anywhere, not only while the input has
+  // focus.
+  //
+  // It used to live on the input's own onKeyDown, which meant Escape worked
+  // while typing and silently did nothing the moment focus moved — click a
+  // result row, tab out, or let the browser move focus, and the only ways out
+  // were the mouse. Every other overlay in this app (Modal, Drawer, the
+  // about card, the nav dropdowns) listens on `document`, and the palette is
+  // the one a keyboard-first user reaches for most, so it was the worst place
+  // to be inconsistent.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (event) => {
+      if (event.key === "Escape") { event.preventDefault(); onClose(); }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
 
   if (!open) return null;
 

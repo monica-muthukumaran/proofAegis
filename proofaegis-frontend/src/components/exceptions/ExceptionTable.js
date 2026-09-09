@@ -23,13 +23,55 @@ const OUTCOME_OPTIONS = [
   { value: "all", label: "All invoices" },
 ];
 
+// How loudly the queue says each finding, on the theme's three-step scale.
+//
+// This had three DUPLICATE KEYS — a second line repeated vendor_mismatch,
+// tax_total_mismatch and duplicate_invoice, and "last one wins" silently
+// overrode the first block. The damage was not cosmetic: it demoted
+// `duplicate_invoice` from critical to exception, and paying the same invoice
+// twice is the single most serious thing this product can find. It never
+// threw and never appeared in a diff as a behaviour change, which is why
+// no-dupe-keys is now on in eslint.config.js.
+//
+// The scale, restored and stated once:
+//
+//   critical  — money may already have moved, or this is a known fraud
+//               vector. Reserved for exactly two findings.
+//   exception — a proven discrepancy in what is being billed.
+//   warning   — the case is incomplete rather than proven wrong; it is
+//               waiting on a document, not on a decision.
 const TYPE_TONE = {
-  price_variance: "exception", quantity_variance: "warning",
-  missing_goods_receipt: "warning", missing_purchase_order: "exception",
-  po_over_billed: "exception", payment_details_changed: "critical",
-  duplicate_invoice: "critical", tax_total_mismatch: "exception",
+  duplicate_invoice: "critical",
+  payment_details_changed: "critical",
+
+  price_variance: "exception",
+  po_over_billed: "exception",
+  missing_purchase_order: "exception",
   vendor_mismatch: "exception",
-  vendor_mismatch: "exception", tax_total_mismatch: "warning", duplicate_invoice: "exception",
+  tax_total_mismatch: "exception",
+
+  quantity_variance: "warning",
+  missing_goods_receipt: "warning",
+  // The documents on the case do not describe the same transaction. Not a
+  // billing discrepancy — it means no number computed from them can be
+  // trusted, so it is "incomplete" rather than "proven wrong".
+  unrelated_documents: "warning",
+
+  // Cross-case findings. Both are invisible to any per-invoice check, which
+  // is the product's actual claim, so neither may render as undifferentiated
+  // grey.
+  //
+  // vendor_price_drift is schemas.py's own words the "price equivalent of
+  // PO_OVER_BILLED", and po_over_billed is an exception — so this is too. It
+  // was falling through to the neutral default, which showed the queue's most
+  // distinctive finding in the same grey as a cleared invoice.
+  vendor_price_drift: "exception",
+  // Deliberately the quietest tone, and this entry exists to record that as a
+  // decision rather than leave it to the fallback. schemas.py: a recurring
+  // series is what rent, a retainer or an AMC looks like to a duplicate
+  // check, and shouting about those is the fastest way to lose a reviewer's
+  // trust. Reported, but reported low.
+  recurring_suspected: "neutral",
 };
 
 // A queue row exists from the moment a case is created, which is BEFORE any

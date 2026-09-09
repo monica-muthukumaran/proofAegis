@@ -74,7 +74,7 @@ export function AddDocumentsModal({ open, exceptionId, onClose, onUploaded }) {
   };
 
   return html`
-    <${Modal} open=${open} onClose=${onClose} wide=${true}>
+    <${Modal} open=${open} onClose=${onClose} wide=${true} label="Add documents to this case">
       <div class="stack gap-16">
         <div class="row" style=${{ justifyContent: "space-between" }}>
           <h3 class="text-section-title">Add documents to this case</h3>
