@@ -16,6 +16,7 @@ def _bool_env(name: str, default: bool) -> bool:
     return val.strip().lower() in ("1", "true", "yes", "on")
 
 
+
 class Config:
     # --- Google Cloud / Gemini ---
     GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
