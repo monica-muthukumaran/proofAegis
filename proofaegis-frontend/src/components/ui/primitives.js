@@ -1,4 +1,4 @@
-import { html, React, useEffect, useRef } from "../../lib.js";
+import { html, React, useEffect, useRef, createPortal } from "../../lib.js";
 import { SpotArt } from "../brand/HeroArt.js";
 
 // A tiny inline-SVG icon set — no external icon font/network dependency,
@@ -117,11 +117,14 @@ export function Modal({ open, onClose, children, wide = false, label = "Dialog" 
     return () => { document.removeEventListener("keydown", onKeyDown); window.clearTimeout(timer); };
   }, [open, onClose]);
   if (!open) return null;
-  return html`
+  // Portalled to document.body — see the note in lib.js. Rendered in place it
+  // inherits whichever ancestor happens to hold a transform, an overflow or a
+  // stacking context, and this app has all three above different callers.
+  return createPortal(html`
     <div class="overlay-backdrop" onClick=${(e) => { if (e.target === e.currentTarget) onClose && onClose(); }} role="presentation">
       <div class="modal-center" style=${wide ? { width: 640 } : {}} role="dialog" aria-modal="true" aria-label=${label} tabIndex="-1" ref=${modalRef}>${children}</div>
     </div>
-  `;
+  `, document.body);
 }
 
 export function Drawer({ open, onClose, title, children }) {
@@ -134,7 +137,7 @@ export function Drawer({ open, onClose, title, children }) {
     return () => { document.removeEventListener("keydown", onKeyDown); window.clearTimeout(timer); };
   }, [open, onClose]);
   if (!open) return null;
-  return html`
+  return createPortal(html`
     <div class="overlay-backdrop" onClick=${(e) => { if (e.target === e.currentTarget) onClose && onClose(); }}>
       <div class="drawer" role="dialog" aria-modal="true" aria-label=${title} tabIndex="-1" ref=${drawerRef}>
         <div class="row" style=${{ justifyContent: "space-between", marginBottom: 18 }}>
@@ -144,5 +147,5 @@ export function Drawer({ open, onClose, title, children }) {
         ${children}
       </div>
     </div>
-  `;
+  `, document.body);
 }

@@ -1,4 +1,4 @@
-import { html, useState, useEffect, useMemo } from "../../lib.js";
+import { html, useState, useEffect, useMemo, createPortal } from "../../lib.js";
 import { TOUR_STEPS } from "./tourSteps.js";
 import { Icon } from "../ui/primitives.js";
 
@@ -87,7 +87,7 @@ export function GuidedTour({ stepIndex, onNext, onBack, onSkip, onClose, onResta
   const isLast = stepIndex === TOUR_STEPS.length - 1;
 
   if (step.isComplete) {
-    return html`
+    return createPortal(html`
       <div class="tour-backdrop"></div>
       <div class="tour-center-card">
         <div class="stack gap-16" style=${{ alignItems: "center" }}>
@@ -103,10 +103,10 @@ export function GuidedTour({ stepIndex, onNext, onBack, onSkip, onClose, onResta
           </div>
         </div>
       </div>
-    `;
+    `, document.body);
   }
 
-  return html`
+  return createPortal(html`
     <div class="tour-backdrop" onClick=${onClose}></div>
     ${rect ? html`<div class="tour-highlight-box" style=${{ top: rect.top - 6, left: rect.left - 6, width: rect.width + 12, height: rect.height + 12 }}></div>` : null}
     <div class="tour-card" style=${{ top: tooltipPos.top, left: tooltipPos.left }} role="dialog" aria-live="polite">
@@ -134,7 +134,7 @@ export function GuidedTour({ stepIndex, onNext, onBack, onSkip, onClose, onResta
         </div>
       </div>
     </div>
-  `;
+  `, document.body);
 }
 
 export { TOUR_STEPS };

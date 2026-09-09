@@ -8,7 +8,7 @@
 // The PDF is fetched through the authenticated backend endpoint and shown
 // from a blob URL, so no bucket URL is ever exposed and access is checked on
 // every read.
-import { html, useState, useEffect } from "../../lib.js";
+import { html, useState, useEffect, createPortal } from "../../lib.js";
 import * as api from "../../services/api.js";
 import { Icon, Badge, Skeleton } from "../ui/primitives.js";
 
@@ -64,7 +64,7 @@ export function DocumentPreview({ open, document: doc, exceptionId, onClose }) {
     ? Object.entries(extraction).filter(([k, v]) => !HIDDEN_FIELDS.has(k) && v !== null && v !== undefined)
     : [];
 
-  return html`
+  return createPortal(html`
     <div class="overlay-backdrop" role="presentation"
       onClick=${(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div class="doc-preview" role="dialog" aria-modal="true" aria-label=${`Preview of ${doc.file_name}`}>
@@ -148,5 +148,5 @@ export function DocumentPreview({ open, document: doc, exceptionId, onClose }) {
         </div>
       </div>
     </div>
-  `;
+  `, document.body);
 }

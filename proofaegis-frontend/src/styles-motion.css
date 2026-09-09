@@ -99,7 +99,17 @@
    rise, keyed on the view name so React tears down and rebuilds the node —
    which is what restarts the animation. Deliberately quick: a page transition
    a user notices twice is a page transition that is too long. */
-.route-enter{animation:rise-sm var(--dur-2) var(--ease-out) both}
+/* `forwards`, not `both`, and the difference is not cosmetic. `both` adds
+   `backwards`, which applies the keyframes' FROM state before the animation
+   starts — here that is opacity:0 plus a transform. There is no
+   animation-delay, so backwards buys nothing, and it costs two things if the
+   animation is ever slow to start or throttled (a background tab, a
+   power-saving mode): the entire page sits at opacity 0, and the wrapper
+   holds a transform that turns it into the containing block for every
+   fixed-position overlay inside it. Overlays are portalled out of here now,
+   but a route wrapper that can render the whole page invisible is worth
+   removing on its own. */
+.route-enter{animation:rise-sm var(--dur-2) var(--ease-out) forwards}
 
 /* Progressive enhancement for browsers that have the real thing. Same
    duration, but the browser handles the crossfade between old and new. */

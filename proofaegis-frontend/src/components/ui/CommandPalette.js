@@ -7,7 +7,7 @@
 // Searches vendors, invoice numbers, exception ids and types alongside the
 // app's own destinations, and ranks a prefix match above a substring one so
 // typing an invoice number puts it first rather than eighth.
-import { html, useState, useEffect, useRef, useMemo } from "../../lib.js";
+import { html, useState, useEffect, useRef, useMemo, createPortal } from "../../lib.js";
 import { Icon, Badge } from "./primitives.js";
 
 const NAV_COMMANDS = [
@@ -115,7 +115,7 @@ export function CommandPalette({ open, onClose, exceptions, onNavigate, onOpenEx
 
   if (!open) return null;
 
-  return html`
+  return createPortal(html`
     <div class="overlay-backdrop palette-backdrop" role="presentation"
       onClick=${(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div class="palette" role="dialog" aria-modal="true" aria-label="Command palette">
@@ -153,5 +153,5 @@ export function CommandPalette({ open, onClose, exceptions, onNavigate, onOpenEx
         </div>
       </div>
     </div>
-  `;
+  `, document.body);
 }

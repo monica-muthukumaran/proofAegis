@@ -1,6 +1,24 @@
 // Shared React runtime. Vite bundles these package imports for production.
 import React from "react";
 import ReactDOM from "react-dom/client";
+// createPortal lives in "react-dom", not "react-dom/client".
+//
+// Every fixed-position overlay in this app renders through it, and that is
+// load-bearing rather than stylistic. `position: fixed` is only relative to
+// the viewport while NO ancestor establishes a containing block for it, and
+// this app has three ancestors that do:
+//
+//   .route-enter  animates `transform`, and any non-none transform makes the
+//                 element the containing block for fixed descendants.
+//   .sidebar      is `overflow-y: auto`; once an overlay is no longer truly
+//                 viewport-fixed it is clipped by that scroll box.
+//   .ambient      sets `isolation: isolate`, a stacking context.
+//
+// The symptom is not a crash. The overlay renders, sized to the whole
+// scrollable page instead of the viewport, and centres itself far below the
+// fold — so clicking the trigger looks like nothing happened. Portalling to
+// document.body puts every overlay outside all three.
+import { createPortal } from "react-dom";
 import htm from "htm";
 
 // HTML attribute names that React spells differently. These are irregular —
@@ -51,4 +69,4 @@ export const html = htm.bind(createElement);
 export const {
   useState, useEffect, useRef, useMemo, useCallback, useContext, createContext,
 } = React;
-export { React, ReactDOM };
+export { React, ReactDOM, createPortal };
